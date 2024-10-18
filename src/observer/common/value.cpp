@@ -125,6 +125,10 @@ void Value::set_data(char *data, int length)
       value_.bool_value_ = *(int *)data != 0;
       length_            = length;
     } break;
+    case AttrType::DATES:{
+      value_.int_value_  = *(int *)data;
+      length_            = length;
+    }break;
     default: {
       LOG_WARN("unknown data type: %d", attr_type_);
     } break;
@@ -151,6 +155,14 @@ void Value::set_boolean(bool val)
   reset();
   attr_type_         = AttrType::BOOLEANS;
   value_.bool_value_ = val;
+  length_            = sizeof(val);
+}
+
+void Value::set_date(int val)
+{
+  reset();
+  attr_type_         = AttrType::DATES;
+  value_.int_value_  = val; 
   length_            = sizeof(val);
 }
 
@@ -186,6 +198,9 @@ void Value::set_value(const Value &value)
     } break;
     case AttrType::CHARS: {
       set_string(value.get_string().c_str());
+    } break;
+    case AttrType::DATES:{
+      set_date(value.get_date());
     } break;
     case AttrType::BOOLEANS: {
       set_boolean(value.get_boolean());
@@ -251,6 +266,9 @@ int Value::get_int() const
     case AttrType::BOOLEANS: {
       return (int)(value_.bool_value_);
     }
+    case AttrType::DATES: {
+      return (int)(value_.int_value_);
+    }
     default: {
       LOG_WARN("unknown data type. type=%d", attr_type_);
       return 0;
@@ -276,9 +294,31 @@ float Value::get_float() const
     case AttrType::FLOATS: {
       return value_.float_value_;
     } break;
+    case AttrType::DATES: {
+      return float(value_.int_value_);
+    } break;
     case AttrType::BOOLEANS: {
       return float(value_.bool_value_);
     } break;
+    default: {
+      LOG_WARN("unknown data type. type=%d", attr_type_);
+      return 0;
+    }
+  }
+  return 0;
+}
+int  Value::get_date()  const{
+  switch (attr_type_) {
+    case AttrType::CHARS: 
+    case AttrType::INTS: 
+    case AttrType::FLOATS: 
+    case AttrType::BOOLEANS: {
+      LOG_TRACE("the value type is not date.");
+      return (int)(-1);
+    }
+    case AttrType::DATES: {
+      return (int)(value_.int_value_);
+    }
     default: {
       LOG_WARN("unknown data type. type=%d", attr_type_);
       return 0;
@@ -316,6 +356,9 @@ bool Value::get_boolean() const
     case AttrType::FLOATS: {
       float val = value_.float_value_;
       return val >= EPSILON || val <= -EPSILON;
+    } break;
+    case AttrType::DATES: {
+      return value_.int_value_ != 0;
     } break;
     case AttrType::BOOLEANS: {
       return value_.bool_value_;
