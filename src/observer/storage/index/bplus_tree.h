@@ -449,6 +449,8 @@ private:
 class BplusTreeHandler
 {
 public:
+  ~BplusTreeHandler();
+
   /**
    * @brief 创建一个B+树
    * @param log_handler 记录日志
