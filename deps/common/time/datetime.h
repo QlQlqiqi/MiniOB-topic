@@ -95,23 +95,7 @@ struct DateTime
   }
 
   // Construct from the xml datetime format
-  DateTime(string &xml_time){
-    tm tmp;
-    if(sscanf(xml_str.c_str(),
-        "%04d-%02d-%02dT%02d:%02d:%02dZ",
-        &tmp.tm_year,
-        &tmp.tm_mon,
-        &tmp.tm_mday,
-        &tmp.tm_hour,
-        &tmp.tm_min,
-        &tmp.tm_sec)!=6){
-          m_date = 0;
-          m_time = 0;
-          return;
-        }
-    m_date = julian_date(tmp.tm_year, tmp.tm_mon, tmp.tm_mday);
-    m_time = make_hms(tmp.tm_hour, tmp.tm_min, tmp.tm_sec, 0);
-  }
+  DateTime(string &xml_time);
 
   // check whether a string is valid with a xml datetime format
   static bool is_valid_xml_datetime(const string &str);

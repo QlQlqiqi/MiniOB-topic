@@ -411,9 +411,8 @@ value:
     |DATE_STR{
       char *tmp = common::substr($1, 1, strlen($1)-2);
       std::string str(tmp);
-      common::DateTime date_time;
-      time_t timestamps = date_time.str_to_time_t(str);
-      if(timestamps < 0)
+      common::DateTime date_time(str);
+      if(date_time.m_date == 0 && date_time.m_time == 0)
       {
         yyerror(&@$,sql_string,sql_result,scanner,"date invaid",true);
         YYERROR;
