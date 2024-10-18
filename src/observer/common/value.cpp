@@ -158,11 +158,11 @@ void Value::set_boolean(bool val)
   length_            = sizeof(val);
 }
 
-void Value::set_date(int val)
+void Value::set_date(common::DateTime val)
 {
   reset();
   attr_type_         = AttrType::DATES;
-  value_.int_value_  = val; 
+  value_.date_time_value_ = val; 
   length_            = sizeof(val);
 }
 
@@ -307,24 +307,24 @@ float Value::get_float() const
   }
   return 0;
 }
-int  Value::get_date()  const{
+common::DateTime Value::get_date()  const{
   switch (attr_type_) {
     case AttrType::CHARS: 
     case AttrType::INTS: 
     case AttrType::FLOATS: 
     case AttrType::BOOLEANS: {
       LOG_TRACE("the value type is not date.");
-      return (int)(-1);
+      return common::DateTime();
     }
     case AttrType::DATES: {
-      return (int)(value_.int_value_);
+      return value_.date_time_value_;
     }
     default: {
       LOG_WARN("unknown data type. type=%d", attr_type_);
-      return 0;
+      return common::DateTime();
     }
   }
-  return 0;
+  return common::DateTime();
 }
 
 string Value::get_string() const { return this->to_string(); }

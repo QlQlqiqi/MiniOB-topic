@@ -14,6 +14,9 @@ MAKE=make
 
 echo "$0 ${ALL_ARGS[@]}"
 
+cd src/observer/sql/parser && bash gen_parser.sh
+cd $TOPDIR
+
 function usage
 {
   echo "Usage:"

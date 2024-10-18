@@ -41,14 +41,16 @@ DateTime::DateTime(string &xml_str)
 time_t DateTime::str_to_time_t(string &xml_str)
 {
   tm tmp;
-  sscanf(xml_str.c_str(),
+  if(sscanf(xml_str.c_str(),
       "%04d-%02d-%02dT%02d:%02d:%02dZ",
       &tmp.tm_year,
       &tmp.tm_mon,
       &tmp.tm_mday,
       &tmp.tm_hour,
       &tmp.tm_min,
-      &tmp.tm_sec);
+      &tmp.tm_sec)!=6){
+        return -1;
+      }
   m_date = julian_date(tmp.tm_year, tmp.tm_mon, tmp.tm_mday);
   m_time = make_hms(tmp.tm_hour, tmp.tm_min, tmp.tm_sec, 0);
   return to_time_t();

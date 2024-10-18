@@ -20,33 +20,29 @@ int DateType::compare(const Value &left, const Value &right) const
 {
   ASSERT(left.attr_type() == AttrType::DATES, "left type is not integer");
   if (right.attr_type() == AttrType::DATES) {
-    return common::compare_int((void *)&left.value_.int_value_, (void *)&right.value_.int_value_);
+    return left.value_.date_time_value_ >  right.value_.date_time_value_;
   } 
   return INT32_MAX;
 }
 
 RC DateType::add(const Value &left, const Value &right, Value &result) const
 {
-  result.set_int(left.get_date() + right.get_date());
-  return RC::SUCCESS;
+  return RC::UNIMPLEMENTED;
 }
 
 RC DateType::subtract(const Value &left, const Value &right, Value &result) const
 {
-  result.set_int(left.get_date() - right.get_date());
-  return RC::SUCCESS;
+  return RC::UNIMPLEMENTED;
 }
 
 RC DateType::multiply(const Value &left, const Value &right, Value &result) const
 {
-  result.set_int(left.get_date() * right.get_date());
-  return RC::SUCCESS;
+  return RC::UNIMPLEMENTED;
 }
 
 RC DateType::negative(const Value &val, Value &result) const
 {
-  result.set_int(-val.get_date());
-  return RC::SUCCESS;
+  return RC::UNIMPLEMENTED;
 }
 
 RC DateType::set_value_from_str(Value &val, const string &data) const
