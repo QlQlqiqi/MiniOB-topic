@@ -18,13 +18,17 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/exception.h"
 #include "common/lang/sstream.h"
 #include "common/lang/string.h"
+#include "common/time/datetime.h"
 #include "common/log/log.h"
+#include "value.h"
 
 Value::Value(int val) { set_int(val); }
 
 Value::Value(float val) { set_float(val); }
 
 Value::Value(bool val) { set_boolean(val); }
+
+Value::Value(common::DateTime val) { set_date(val); }
 
 Value::Value(const char *s, int len /*= 0*/) { set_string(s, len); }
 

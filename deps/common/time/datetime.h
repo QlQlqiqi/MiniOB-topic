@@ -95,10 +95,15 @@ struct DateTime
   }
 
   // Construct from the xml datetime format
-  DateTime(string &xml_time);
+  DateTime(const string &xml_time);
+
 
   // check whether a string is valid with a xml datetime format
   static bool is_valid_xml_datetime(const string &str);
+
+  static bool is_leap_year(int year);
+
+  static bool is_valid_date(const string &str);
 
   // Load the referenced values with the year, month and day
   // portions of the date in a single operation
@@ -254,7 +259,7 @@ struct DateTime
 
   // Return a human-friendly string representation of the timestamp,
   // expressed in terms of the local timezone
-  string to_string_local()
+  string to_string_local() const
   {
     const time_t tt = to_time_t();
     // 'man asctime' specifies that buffer must be at least 26 bytes
@@ -267,7 +272,7 @@ struct DateTime
 
   // Return a human-friendly string representation of the timestamp,
   // expressed in terms of Coordinated Universal Time (UTC)
-  string to_string_utc()
+  string to_string_utc() const
   {
     const time_t tt = to_time_t();
     // 'man asctime' specifies that buffer must be at least 26 bytes

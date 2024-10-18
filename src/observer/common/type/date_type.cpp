@@ -20,7 +20,7 @@ int DateType::compare(const Value &left, const Value &right) const
 {
   ASSERT(left.attr_type() == AttrType::DATES, "left type is not integer");
   if (right.attr_type() == AttrType::DATES) {
-    return left.value_.date_time_value_ >  right.value_.date_time_value_;
+    return common::compare_date((void *)&left.value_.int_value_, (void *)&right.value_.int_value_);
   } 
   return INT32_MAX;
 }
@@ -49,22 +49,19 @@ RC DateType::set_value_from_str(Value &val, const string &data) const
 {
   RC                rc = RC::SUCCESS;
   stringstream deserialize_stream;
-  deserialize_stream.clear();  // 清理stream的状态，防止多次解析出现异常
-  deserialize_stream.str(data);
-  int int_value;
-  deserialize_stream >> int_value;
-  if (!deserialize_stream || !deserialize_stream.eof()) {
+  common::DateTime date_time(data);
+  if(!common::DateTime::is_valid_date(data))
+  {
     rc = RC::SCHEMA_FIELD_TYPE_MISMATCH;
-  } else {
-    val.set_int(int_value);
+  }else
+  {
+    val.set_date(date_time);
   }
   return rc;
 }
 
 RC DateType::to_string(const Value &val, string &result) const
 {
-  stringstream ss;
-  ss << val.value_.int_value_;
-  result = ss.str();
+  result = val.value_.date_time_value_.to_string_local();
   return RC::SUCCESS;
 }

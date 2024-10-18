@@ -412,13 +412,13 @@ value:
       char *tmp = common::substr($1, 1, strlen($1)-2);
       std::string str(tmp);
       common::DateTime date_time(str);
-      if(date_time.m_date == 0 && date_time.m_time == 0)
+      if(!common::DateTime::is_valid_date(str))
       {
         yyerror(&@$,sql_string,sql_result,scanner,"date invaid",true);
         YYERROR;
       }else
       {
-        $$ = new Value(AttrType::DATES, (char*)(&timestamps), sizeof(timestamps));
+        $$ = new Value(date_time);
       }
 
     }

@@ -48,6 +48,7 @@ public:
   explicit Value(int val);
   explicit Value(float val);
   explicit Value(bool val);
+  explicit Value(common::DateTime val);
   explicit Value(const char *s, int len = 0);
 
   Value(const Value &other);
