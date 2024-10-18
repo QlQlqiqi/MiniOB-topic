@@ -401,6 +401,16 @@ public:
     DateTime d = now();
     m_date     = d.m_date;
   }
+
+  string to_string() const
+  {
+    int year, month, day;
+    get_ymd(m_date, year, month, day);
+    // Create a buffer to hold the formatted date string
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d", year, month, day);
+    return std::string(buffer);
+  }
 };
 
 class Now

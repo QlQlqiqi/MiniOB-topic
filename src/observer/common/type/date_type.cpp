@@ -62,6 +62,6 @@ RC DateType::set_value_from_str(Value &val, const string &data) const
 
 RC DateType::to_string(const Value &val, string &result) const
 {
-  result = val.value_.date_time_value_.to_string_local();
+  result = common::Date(val.value_.date_time_value_).to_string();
   return RC::SUCCESS;
 }

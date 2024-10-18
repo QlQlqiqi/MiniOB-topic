@@ -70,8 +70,8 @@ int compare_string(void *arg1, int arg1_max_length, void *arg2, int arg2_max_len
 
 int compare_date(void *arg1, void *arg2)
 {
-  DateTime v1 = *(DateTime* )arg1;
-  DateTime v2 = *(DateTime* )arg2;
+  Date v1 = (*(DateTime* )arg1);
+  Date v2 = (*(DateTime* )arg2);
   if (v1 > v2) {
     return 1;
   } else if (v1 < v2) {
