@@ -16,6 +16,8 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/operator/physical_operator.h"
 #include "sql/parser/parse.h"
+#include "sql/parser/value.h"
+#include "storage/field/field.h"
 #include <vector>
 
 class UpdeteStmt;
@@ -27,7 +29,7 @@ class UpdeteStmt;
 class UpdatePhysicalOperator : public PhysicalOperator
 {
 public:
-  UpdatePhysicalOperator(Table *table, std::vector<Value> &&values);
+  UpdatePhysicalOperator(Table *table, std::vector<Value> values, std::vector<FieldMeta> field_metas);
 
   virtual ~UpdatePhysicalOperator() = default;
 
@@ -39,7 +41,9 @@ public:
 
   Tuple *current_tuple() override { return nullptr; }
 
+
 private:
-  Table             *table_ = nullptr;
-  std::vector<Value> values_;
+  Table                 *table_ = nullptr;
+  std::vector<Value>     values_;
+  std::vector<FieldMeta> field_metas_;
 };

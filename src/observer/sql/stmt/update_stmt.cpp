@@ -14,9 +14,23 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/stmt/update_stmt.h"
 
-UpdateStmt::UpdateStmt(Table *table, Value *values, int value_amount)
-    : table_(table), values_(values), value_amount_(value_amount)
+UpdateStmt::UpdateStmt(
+    Table *table, Value *values, int value_amount, FieldMeta *field_metas, int field_amount, FilterStmt *stmt)
+    : table_(table),
+      values_(values),
+      value_amount_(value_amount),
+      field_metas_(field_metas),
+      field_amount_(field_amount),
+      filter_stmt_(stmt)
 {}
+
+UpdateStmt::~UpdateStmt()
+{
+  if (nullptr != filter_stmt_) {
+    delete filter_stmt_;
+    filter_stmt_ = nullptr;
+  }
+}
 
 RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
 {
@@ -36,8 +50,9 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
   }
 
   // check the schema
-  const TableMeta&              table_meta  = table->table_meta();
-  const std::vector<FieldMeta>* field_metas = table_meta.field_metas();
+  const TableMeta              &table_meta    = table->table_meta();
+  const std::vector<FieldMeta> *field_metas   = table_meta.field_metas();
+  FieldMeta                    *to_be_updated = nullptr;
   for (auto& field_meta : *field_metas)
   {
     if (strcmp(field_meta.name(), update.attribute_name.c_str()) == 0)
@@ -47,10 +62,26 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
         LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(ftype), static_cast<int>(vtype));
         return RC::SCHEMA_FIELD_TYPE_MISMATCH;
       }
+      // Only single update supported for now.
+      to_be_updated = &field_meta;
+      break;
     }
   }
 
+  // filter
+  std::unordered_map<std::string, Table *> table_map;
+  table_map.insert(std::pair<std::string, Table *>(std::string(table_name), table));
+
+  FilterStmt *filter_stmt = nullptr;
+
+  RC rc = FilterStmt::create(
+    db, table, &table_map, update.conditions.data(), static_cast<int>(update.conditions.size()), filter_stmt);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));
+    return rc;
+  }
+
   // everything alright
-  stmt = new UpdateStmt(table, &update.value, 1);
+  stmt = new UpdateStmt(table, &update.value, 1, to_be_updated, 1, filter_stmt);
   return RC::SUCCESS;
 }
