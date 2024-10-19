@@ -90,6 +90,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         STRING_T
         FLOAT_T
         VECTOR_T
+        NOT
+        NULL_T
         HELP
         EXIT
         DOT //QUOTE
@@ -131,6 +133,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
   char *                                     string;
   int                                        number;
   float                                      floats;
+  bool                                       bools;
 }
 
 %token <number> NUMBER
@@ -149,6 +152,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
+%type <bools>               opt_null
 %type <value_list>          value_list
 %type <condition_list>      where
 %type <condition_list>      condition_list
@@ -337,21 +341,37 @@ attr_def_list:
     ;
     
 attr_def:
-    ID type LBRACE number RBRACE 
+    ID type LBRACE number RBRACE opt_null
     {
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = $4;
+      $$->nullable = $6;
       free($1);
     }
-    | ID type
+    | ID type opt_null
     {
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = 4;
+      $$->nullable = $3;
       free($1);
+    }
+    ;
+opt_null:
+    /* empty */
+    {
+      $$ = true;
+    }
+    | NOT NULL_T
+    {
+      $$ = false;
+    }
+    | NULL_T
+    {
+      $$ = true;
     }
     ;
 number:
