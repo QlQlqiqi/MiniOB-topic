@@ -107,6 +107,12 @@ void Value::reset()
   own_data_  = false;
 }
 
+void Value::set_null()
+{
+  reset();
+  attr_type_ = AttrType::NULLS;
+}
+
 void Value::set_data(char *data, int length)
 {
   switch (attr_type_) {

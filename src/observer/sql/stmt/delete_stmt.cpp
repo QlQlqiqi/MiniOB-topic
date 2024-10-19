@@ -54,6 +54,9 @@ RC DeleteStmt::create(Db *db, const DeleteSqlNode &delete_sql, Stmt *&stmt)
     return rc;
   }
 
+  // bind exprs in filter statement
+  Stmt::bind_filter_stmt(db, {delete_sql.relation_name}, filter_stmt);
+
   stmt = new DeleteStmt(table, filter_stmt);
   return rc;
 }

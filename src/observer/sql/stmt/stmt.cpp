@@ -14,6 +14,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/stmt/stmt.h"
 #include "common/log/log.h"
+#include "sql/parser/expression_binder.h"
 #include "sql/stmt/calc_stmt.h"
 #include "sql/stmt/create_index_stmt.h"
 #include "sql/stmt/create_table_stmt.h"
@@ -22,6 +23,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/desc_table_stmt.h"
 #include "sql/stmt/exit_stmt.h"
 #include "sql/stmt/explain_stmt.h"
+#include "sql/stmt/filter_stmt.h"
 #include "sql/stmt/help_stmt.h"
 #include "sql/stmt/insert_stmt.h"
 #include "sql/stmt/load_data_stmt.h"
@@ -30,6 +32,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/show_tables_stmt.h"
 #include "sql/stmt/trx_begin_stmt.h"
 #include "sql/stmt/trx_end_stmt.h"
+#include "storage/db/db.h"
 
 bool stmt_type_ddl(StmtType type)
 {
@@ -118,4 +121,66 @@ RC Stmt::create_stmt(Db *db, ParsedSqlNode &sql_node, Stmt *&stmt)
     } break;
   }
   return RC::UNIMPLEMENTED;
+}
+
+RC Stmt::bind_filter_stmt(Db *db, const std::vector<std::string> &relations, FilterStmt *filter_stmt)
+{
+  BinderContext binder_context;
+
+  // collect tables in `from` statement
+  vector<Table *>                     tables;
+  std::unordered_map<string, Table *> table_map;
+  for (size_t i = 0; i < relations.size(); i++) {
+    const char *table_name = relations[i].c_str();
+    if (nullptr == table_name) {
+      LOG_WARN("invalid argument. relation name is null. index=%d", i);
+      return RC::INVALID_ARGUMENT;
+    }
+
+    Table *table = db->find_table(table_name);
+    if (nullptr == table) {
+      LOG_WARN("no such table. db=%s, table_name=%s", db->name(), table_name);
+      return RC::SCHEMA_TABLE_NOT_EXIST;
+    }
+
+    binder_context.add_table(table);
+    tables.push_back(table);
+    table_map.insert({table_name, table});
+  }
+
+  // collect query fields in `select` statement
+  vector<unique_ptr<Expression>> bound_expressions;
+  ExpressionBinder               expression_binder(binder_context);
+
+  // bind exprs in filter statement
+  for (auto &unit : filter_stmt->filter_units()) {
+    vector<unique_ptr<Expression>> filter_expressions;
+    if (unit->left().expr_) {
+      auto l  = unit->left().expr_->Clone();
+      RC   rc = expression_binder.bind_expression(l, filter_expressions);
+      if (OB_FAIL(rc)) {
+        LOG_INFO("bind expression failed. rc=%s", strrc(rc));
+        return rc;
+      }
+      ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
+      std::shared_ptr<Expression> l_expr = std::move(filter_expressions[0]);
+      unit->set_left(l_expr);
+      filter_expressions.clear();
+    }
+
+    if (unit->right().expr_) {
+      auto r  = unit->right().expr_->Clone();
+      RC   rc = expression_binder.bind_expression(r, filter_expressions);
+      if (OB_FAIL(rc)) {
+        LOG_INFO("bind expression failed. rc=%s", strrc(rc));
+        return rc;
+      }
+      ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
+      std::shared_ptr<Expression> r_expr = std::move(filter_expressions[0]);
+      unit->set_right(r_expr);
+      filter_expressions.clear();
+    }
+  }
+
+  return RC::SUCCESS;
 }

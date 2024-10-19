@@ -26,21 +26,8 @@ class FieldMeta;
 
 struct FilterObj
 {
-  bool  is_attr;
-  Field field;
-  Value value;
-
-  void init_attr(const Field &field)
-  {
-    is_attr     = true;
-    this->field = field;
-  }
-
-  void init_value(const Value &value)
-  {
-    is_attr     = false;
-    this->value = value;
-  }
+  FilterObj(std::shared_ptr<Expression> expr = nullptr) : expr_(expr) {}
+  std::shared_ptr<Expression> expr_;
 };
 
 class FilterUnit

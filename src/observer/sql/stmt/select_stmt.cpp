@@ -100,6 +100,9 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     return rc;
   }
 
+  // bind exprs in filter statement
+  Stmt::bind_filter_stmt(db, select_sql.relations, filter_stmt);
+
   // everything alright
   SelectStmt *select_stmt = new SelectStmt();
 

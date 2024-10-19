@@ -52,6 +52,14 @@ RC IntegerType::negative(const Value &val, Value &result) const
   return RC::SUCCESS;
 }
 
+int IntegerType::cast_cost(AttrType type)
+{
+  if (type == AttrType::FLOATS) {
+    return 0;
+  }
+  return INT32_MAX;
+}
+
 RC IntegerType::set_value_from_str(Value &val, const string &data) const
 {
   RC                rc = RC::SUCCESS;

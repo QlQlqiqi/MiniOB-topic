@@ -55,6 +55,8 @@ public:
 
   void reset();
 
+  void set_null();
+
   static RC add(const Value &left, const Value &right, Value &result)
   {
     return DataType::type_instance(result.attr_type())->add(left, right, result);
@@ -82,6 +84,14 @@ public:
 
   static RC cast_to(const Value &value, AttrType to_type, Value &result)
   {
+    result.set_type(to_type);
+    switch (to_type) {
+      case AttrType::INTS: result.set_int(value.get_int()); break;
+      case AttrType::FLOATS: result.set_float(value.get_float()); break;
+      case AttrType::BOOLEANS: result.set_boolean(value.get_boolean()); break;
+      default: return RC::UNSUPPORTED;
+    }
+  return RC::SUCCESS;
     return DataType::type_instance(value.attr_type())->cast_to(value, to_type, result);
   }
 

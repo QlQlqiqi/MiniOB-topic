@@ -43,10 +43,11 @@ RC FloatType::multiply(const Value &left, const Value &right, Value &result) con
 
 RC FloatType::divide(const Value &left, const Value &right, Value &result) const
 {
-  if (right.get_float() > -EPSILON && right.get_float() < EPSILON) {
+  if ((right.get_float() > -EPSILON && right.get_float() < EPSILON) || (right.get_float() == 0)) {
     // NOTE:
     // 设置为浮点数最大值是不正确的。通常的做法是设置为NULL，但是当前的miniob没有NULL概念，所以这里设置为浮点数最大值。
-    result.set_float(numeric_limits<float>::max());
+    // 1 / 0 应该是 null
+    result.set_null();
   } else {
     result.set_float(left.get_float() / right.get_float());
   }
@@ -57,6 +58,14 @@ RC FloatType::negative(const Value &val, Value &result) const
 {
   result.set_float(-val.get_float());
   return RC::SUCCESS;
+}
+
+int FloatType::cast_cost(AttrType type)
+{
+  if (type == AttrType::INTS) {
+    return 0;
+  }
+  return INT32_MAX;
 }
 
 RC FloatType::set_value_from_str(Value &val, const string &data) const
