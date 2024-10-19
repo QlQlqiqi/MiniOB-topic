@@ -44,6 +44,8 @@ public:
 
 private:
   Table                 *table_ = nullptr;
+  Trx                   *trx_   = nullptr;
+  std::vector<Record>    records_;
   std::vector<Value>     values_;
   std::vector<FieldMeta> field_metas_;
 };

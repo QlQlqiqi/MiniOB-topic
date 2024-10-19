@@ -254,9 +254,12 @@ RC PhysicalPlanGenerator::create_plan(InsertLogicalOperator &insert_oper, unique
   return RC::SUCCESS;
 }
 
-RC PhysicalPlanGenerator::create_plan(UpdateLogicalOperator &insert_oper, unique_ptr<PhysicalOperator> &oper)
+RC PhysicalPlanGenerator::create_plan(UpdateLogicalOperator &update_oper, unique_ptr<PhysicalOperator> &oper)
 {
-  // TODO
+  Table             *table  = update_oper.table();
+  vector<Value>     &values = update_oper.values();
+  vector<FieldMeta> &fields = update_oper.field_metas();
+  oper.reset(new UpdatePhysicalOperator(table, values, fields));
   return RC::INTERNAL;
 }
 
