@@ -20,10 +20,10 @@ enum class AttrType
   CHARS,     ///< 字符串类型
   INTS,      ///< 整数类型(4字节)
   FLOATS,    ///< 浮点数类型(4字节)
-  VECTORS,   ///< 向量类型
-  NULLS,     ///< null 类型
   BOOLEANS,  ///< boolean类型，当前不是由parser解析出来的，是程序内部使用的
+  VECTORS,   ///< 向量类型
   DATES,
+  NULLS,     ///< null 类型
   MAXTYPE,   ///< 请在 UNDEFINED 与 MAXTYPE 之间增加新类型
 };
 
