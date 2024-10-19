@@ -241,7 +241,11 @@ RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<Logical
 {
   Table        *table = update_stmt->table();
   vector<Value> values(update_stmt->values(), update_stmt->values() + update_stmt->value_amount());
-  vector<FieldMeta> fields(update_stmt->field_metas(), update_stmt->field_metas() + update_stmt->field_amount());
+  vector<FieldMeta> fields;
+  for (size_t i = 0; i < update_stmt->field_amount(); ++i)
+  {
+    fields.emplace_back(update_stmt->field_metas()[i]);
+  }
 
   UpdateLogicalOperator *update_operator = new UpdateLogicalOperator(table, values, fields);
   logical_operator.reset(update_operator);

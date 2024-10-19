@@ -31,12 +31,11 @@ public:
 
   LogicalOperatorType type() const override { return LogicalOperatorType::UPDATE; }
 
-  Table                    *table() const { return table_; }
-
-  std::vector<Value>       &values() { return values_; }
-  const std::vector<Value> &values() const { return values_; }
-  std::vector<Value>       &field_metas() { return field_metas_; }
-  const std::vector<Value> &field_metas() const { return field_metas_; }
+  Table                        *table() const { return table_; }
+  std::vector<Value>           &values() { return values_; }
+  const std::vector<Value>     &values() const { return values_; }
+  std::vector<FieldMeta>       &field_metas() { return field_metas_; }
+  const std::vector<FieldMeta> &field_metas() const { return field_metas_; }
 
 private:
   Table                 *table_ = nullptr;

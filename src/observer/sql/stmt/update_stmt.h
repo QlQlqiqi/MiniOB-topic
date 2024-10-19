@@ -29,30 +29,28 @@ class UpdateStmt : public Stmt
 {
 public:
   UpdateStmt() = default;
-  UpdateStmt(
-    Table *table,
-    Value *values,          int value_amount,
-    FieldMeta *field_metas, int field_amount,
-    FilterStmt *filter_stmt);
+  UpdateStmt(Table *table, const Value *values, int value_amount, const FieldMeta *field_metas, int field_amount,
+      FilterStmt *filter_stmt);
 
   ~UpdateStmt() override;
 
 public:
   static RC create(Db *db, const UpdateSqlNode &update_sql, Stmt *&stmt);
+  StmtType  type() const override { return StmtType::UPDATE; }
 
 public:
-  Table      *table() const { return table_; }
-  Value      *values() const { return values_; }
-  int         value_amount() const { return value_amount_; }
-  FieldMeta  *field_metas() const { return field_metas_; }
-  int         field_amount() const { return field_amount_; }
-  FilterStmt *filter_stmt() const { return filter_stmt_; }
+  Table           *table() const { return table_; }
+  const Value     *values() const { return values_; }
+  int              value_amount() const { return value_amount_; }
+  const FieldMeta *field_metas() const { return field_metas_; }
+  int              field_amount() const { return field_amount_; }
+  FilterStmt      *filter_stmt() const { return filter_stmt_; }
 
 private:
-  Table      *table_        = nullptr;
-  Value      *values_       = nullptr;
-  int         value_amount_ = 0;
-  FieldMeta  *field_metas_  = nullptr;
-  int         field_amount_ = 0;
-  FilterStmt *filter_stmt_  = nullptr;
+  Table           *table_        = nullptr;
+  const Value     *values_       = nullptr;
+  int              value_amount_ = 0;
+  const FieldMeta *field_metas_  = nullptr;
+  int              field_amount_ = 0;
+  FilterStmt      *filter_stmt_  = nullptr;
 };

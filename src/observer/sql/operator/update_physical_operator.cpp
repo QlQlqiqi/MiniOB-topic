@@ -19,8 +19,9 @@ See the Mulan PSL v2 for more details. */
 
 using namespace std;
 
-UpdatePhysicalOperator::UpdatePhysicalOperator(Table *table, vector<Value> &&values)
-    : table_(table), values_(std::move(values))
+UpdatePhysicalOperator::UpdatePhysicalOperator(
+    Table *table, std::vector<Value> values, std::vector<FieldMeta> field_metas)
+    : table_(table), values_(std::move(values)), field_metas_(std::move(field_metas))
 {}
 
 RC UpdatePhysicalOperator::open(Trx *trx)
