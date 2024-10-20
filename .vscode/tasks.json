@@ -12,15 +12,21 @@
             ]
         },
         {
-            "label": "make",
-            "command": "make"
+            "label": "build_debug",
+            "type": "shell",
+            "command": "bash build.sh debug --make -j4",
+            "problemMatcher": [],
+            "dependsOn":["gen_parser"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         },
+
         {
-            "label": "CMake Build",
-            "dependsOn": [
-                "cmake",
-                "make"
-            ]
+            "label": "gen_parser",
+            "type": "shell",
+            "command": "cd ${workspaceFolder}/src/observer/sql/parser && bash gen_parser.sh"
         }
     ],
     "version": "2.0.0"
