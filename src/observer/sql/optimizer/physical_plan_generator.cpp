@@ -32,6 +32,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/update_physical_operator.h"
 #include "sql/operator/join_logical_operator.h"
 #include "sql/operator/join_physical_operator.h"
+#include "sql/operator/order_by_logical_operator.h"
+#include "sql/operator/order_by_physical_operator.h"
 #include "sql/operator/predicate_logical_operator.h"
 #include "sql/operator/predicate_physical_operator.h"
 #include "sql/operator/project_logical_operator.h"
@@ -41,6 +43,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/table_scan_physical_operator.h"
 #include "sql/operator/group_by_logical_operator.h"
 #include "sql/operator/group_by_physical_operator.h"
+#include "sql/operator/order_by_logical_operator.h"
+#include "sql/operator/order_by_physical_operator.h"
 #include "sql/operator/hash_group_by_physical_operator.h"
 #include "sql/operator/scalar_group_by_physical_operator.h"
 #include "sql/operator/table_scan_vec_physical_operator.h"
@@ -92,6 +96,10 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
     case LogicalOperatorType::GROUP_BY: {
       return create_plan(static_cast<GroupByLogicalOperator &>(logical_operator), oper);
     } break;
+    case LogicalOperatorType::ORDER_BY: {
+      return create_plan(static_cast<OrderByLogicalOperator&>(logical_operator), oper);
+    } break;
+
 
     default: {
       ASSERT(false, "unknown logical operator type");
@@ -397,6 +405,23 @@ RC PhysicalPlanGenerator::create_plan(GroupByLogicalOperator &logical_oper, std:
 
   oper = std::move(group_by_oper);
   return rc;
+}
+
+RC PhysicalPlanGenerator::create_plan(OrderByLogicalOperator &logical_oper, std::unique_ptr<PhysicalOperator> &oper){
+  RC rc = RC::SUCCESS;
+  assert(logical_oper.children().size() == 1);
+  unique_ptr<PhysicalOperator> child_physical_oper;
+  LogicalOperator             &child_oper = *logical_oper.children().front();
+  unique_ptr<OrderByPhysicalOperator> order_by_oper = make_unique<OrderByPhysicalOperator>(std::move(logical_oper.order_by_expressions()), std::move(logical_oper.order_ops()));
+  rc = create(child_oper, child_physical_oper);
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to create child physical operator of group by operator. rc=%s", strrc(rc));
+    return rc;
+  }
+  order_by_oper->add_child(std::move(child_physical_oper));
+  oper = std::move(order_by_oper);
+  return RC::SUCCESS;
+  
 }
 
 RC PhysicalPlanGenerator::create_vec_plan(TableGetLogicalOperator &table_get_oper, unique_ptr<PhysicalOperator> &oper)

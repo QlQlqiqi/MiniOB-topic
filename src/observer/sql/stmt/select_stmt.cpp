@@ -85,6 +85,18 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     }
   }
 
+  unique_ptr<OrderByStmt> order_by_stmt = make_unique<OrderByStmt>();
+  for (size_t i = 0; i < select_sql.order_by.size(); i++) {
+    RC rc = expression_binder.bind_expression(select_sql.order_by[i]->unbound_field, order_by_stmt->order_by_expressions);
+    if (OB_FAIL(rc)) {
+      LOG_INFO("order by bind expression failed. rc=%s", strrc(rc));
+      return rc;
+    }
+    order_by_stmt->order_by_ops.emplace_back(select_sql.order_by[i]->order_op);
+  }
+
+  assert(order_by_stmt->order_by_ops.size() == order_by_stmt->order_by_expressions.size());
+
   Table *default_table = nullptr;
   if (tables.size() == 1) {
     default_table = tables[0];
@@ -112,6 +124,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   select_stmt->query_expressions_.swap(bound_expressions);
   select_stmt->filter_stmt_ = filter_stmt;
   select_stmt->group_by_.swap(group_by_expressions);
+  select_stmt->order_by_.swap(order_by_stmt);
   stmt                      = select_stmt;
   return RC::SUCCESS;
 }
