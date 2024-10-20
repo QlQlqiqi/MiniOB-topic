@@ -84,6 +84,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char* type,
         INSERT
         DELETE
         UPDATE
+        INNER
+        JOIN
         LBRACE
         RBRACE
         COMMA
@@ -144,6 +146,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char* type,
   std::vector<std::unique_ptr<OrderBySqlNode>>* order_by_list;
   OrderBySqlNode*                            order_unit;
   OrderOp                                    order_op;
+  InnerJoinUnit*                             inner_join_unit;
+  InnerJoinSqlNode*                          inner_join;
   char *                                     string;
   int                                        number;
   float                                      floats;
@@ -173,6 +177,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char* type,
 %type <expression>           where
 %type <string>              storage_format
 %type <relation_list>       rel_list
+%type <inner_join>          inner_join_list
+%type <inner_join_unit>     inner_join_rel
 %type <expression>          expression
 %type <expression>          group_by_expression_list
 %type <expression_list>     expression_list
@@ -522,7 +528,7 @@ update_stmt:      /*  update 语句的语法解析树*/
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT expression_list FROM rel_list where group_by order_by
+    SELECT expression_list FROM rel_list inner_join_list where group_by order_by
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -531,20 +537,31 @@ select_stmt:        /*  select 语句的语法解析树*/
       }
 
       if ($4 != nullptr) {
+        if($5 != nullptr && $4->size() != 1){
+          yyerror(&@$,sql_string,sql_result,scanner,"inner join only support one table",true);
+          delete $4;
+          YYERROR;
+        }
         $$->selection.relations.swap(*$4);
         delete $4;
       }
 
-      $$->selection.conditions = $5;
-
-      if ($6 != nullptr) {
-        $$->selection.group_by.swap(*$6);
-        delete $6;
+      if($5 != nullptr){
+        $$->selection.inner_join.reset($5);
       }
 
-      if($7 != nullptr){
-        $$->selection.order_by.swap(*$7);
+      if ($6 != nullptr) {
+        $$->selection.conditions.reset($6);
+      }
+
+      if ($7 != nullptr) {
+        $$->selection.group_by.swap(*$7);
         delete $7;
+      }
+
+      if($8 != nullptr){
+        $$->selection.order_by.swap(*$8);
+        delete $8;
       }
     }
     | SELECT expression_list
@@ -554,6 +571,7 @@ select_stmt:        /*  select 语句的语法解析树*/
       $$->calc.expressions.swap(*$2);
       delete $2;
     }
+
     ;
 calc_stmt:
     CALC expression_list
@@ -686,6 +704,32 @@ rel_list:
       free($1);
     }
     ;
+
+inner_join_list:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | inner_join_list inner_join_rel 
+    {
+      if($1 == nullptr){
+        $$ = new InnerJoinSqlNode();
+      }else{
+        $$ = $1;
+      }
+      $$->relations.emplace_back($2->relation);
+      $$->conditions.emplace_back(std::move($2->condition));
+      delete $2;
+    }
+    ;
+inner_join_rel:
+    INNER JOIN relation ON condition{
+      $$ = new InnerJoinUnit($3); 
+      $$->condition.reset($5); 
+      free($3);
+    }
+    ;
+  
 
 where:
     /* empty */

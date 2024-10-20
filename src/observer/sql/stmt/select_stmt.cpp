@@ -43,22 +43,68 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   // collect tables in `from` statement
   vector<Table *>                tables;
   unordered_map<string, Table *> table_map;
-  for (size_t i = 0; i < select_sql.relations.size(); i++) {
-    const char *table_name = select_sql.relations[i].c_str();
+
+  auto check_and_collect_table = [&](const std::string& relation, Table **table){
+    const char *table_name = relation.c_str();
     if (nullptr == table_name) {
-      LOG_WARN("invalid argument. relation name is null. index=%d", i);
+      LOG_WARN("invalid argument. relation name is null.");
       return RC::INVALID_ARGUMENT;
     }
 
-    Table *table = db->find_table(table_name);
-    if (nullptr == table) {
+    *table = db->find_table(table_name);
+    if (nullptr == *table) {
       LOG_WARN("no such table. db=%s, table_name=%s", db->name(), table_name);
       return RC::SCHEMA_TABLE_NOT_EXIST;
+    }
+    return RC::SUCCESS;
+  };
+
+  for (size_t i = 0; i < select_sql.relations.size(); i++) {
+    const char *table_name = select_sql.relations[i].c_str();
+    Table* table = nullptr;
+    RC rc = check_and_collect_table(select_sql.relations[i], &table);
+
+    if(rc != RC::SUCCESS){
+      return rc;
     }
 
     binder_context.add_table(table);
     tables.push_back(table);
     table_map.insert({table_name, table});
+  }
+
+
+
+  // inner join statement
+  std::unordered_map<Table* , std::unique_ptr<FilterStmt>> join_conditions;
+  if(select_sql.inner_join != nullptr){
+    auto &inner_join_relations = select_sql.inner_join->relations;
+    auto &inner_join_conditions = select_sql.inner_join->conditions; 
+    assert(inner_join_conditions.size() == inner_join_relations.size());
+    for(size_t i = 0; i < inner_join_relations.size(); i++){
+      Table *table = nullptr;
+      RC rc = RC::SUCCESS;
+      if((rc = check_and_collect_table(inner_join_relations[i], &table)) != RC::SUCCESS){
+        return rc;
+      }
+
+      binder_context.add_table(table);
+      tables.push_back(table);
+      table_map.insert({inner_join_relations[i], table});
+
+      FilterStmt *filter_stmt = nullptr;
+      rc                      = FilterStmt::create(db,
+        table,
+        &table_map,
+        inner_join_conditions[i].data(),
+        static_cast<int>(inner_join_conditions[i].size()),
+        filter_stmt);
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("cannot construct filter stmt");
+        return rc;
+      }
+      join_conditions.insert({table, std::unique_ptr<FilterStmt>(filter_stmt)});
+    }
   }
 
   bool mutil_tables = tables.size() > 1;
@@ -121,6 +167,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   select_stmt->filter_stmt_ = filter_stmt;
   select_stmt->group_by_.swap(group_by_expressions);
   select_stmt->order_by_.swap(order_by_stmt);
+  select_stmt->join_conditions_.swap(join_conditions);
   stmt                      = select_stmt;
   return RC::SUCCESS;
 }
