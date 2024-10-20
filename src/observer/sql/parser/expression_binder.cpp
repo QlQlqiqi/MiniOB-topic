@@ -33,19 +33,25 @@ Table *BinderContext::find_table(const char *table_name) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-static void wildcard_fields(Table *table, vector<unique_ptr<Expression>> &expressions)
+static void wildcard_fields(Table *table, vector<unique_ptr<Expression>> &expressions, bool mutil_tables = false)
 {
   const TableMeta &table_meta = table->table_meta();
   const int        field_num  = table_meta.field_num();
   for (int i = table_meta.sys_field_num(); i < field_num; i++) {
     Field      field(table, table_meta.field(i));
     FieldExpr *field_expr = new FieldExpr(field);
-    field_expr->set_name(field.field_name());
+    string     name;
+    if (mutil_tables) {
+      name.append(table_meta.name());
+      name.append(".");
+    }
+    name.append(field.field_name());
+    field_expr->set_name(name.c_str());
     expressions.emplace_back(field_expr);
   }
 }
 
-RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions)
+RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions, bool mutil_tables)
 {
   if (nullptr == expr) {
     return RC::SUCCESS;
@@ -53,11 +59,11 @@ RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique
 
   switch (expr->type()) {
     case ExprType::STAR: {
-      return bind_star_expression(expr, bound_expressions);
+      return bind_star_expression(expr, bound_expressions, mutil_tables);
     } break;
 
     case ExprType::UNBOUND_FIELD: {
-      return bind_unbound_field_expression(expr, bound_expressions);
+      return bind_unbound_field_expression(expr, bound_expressions, mutil_tables);
     } break;
 
     case ExprType::UNBOUND_AGGREGATION: {
@@ -101,7 +107,7 @@ RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique
 }
 
 RC ExpressionBinder::bind_star_expression(
-    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions)
+    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions, bool mutil_tables)
 {
   if (nullptr == expr) {
     return RC::SUCCESS;
@@ -126,14 +132,14 @@ RC ExpressionBinder::bind_star_expression(
   }
 
   for (Table *table : tables_to_wildcard) {
-    wildcard_fields(table, bound_expressions);
+    wildcard_fields(table, bound_expressions, mutil_tables);
   }
 
   return RC::SUCCESS;
 }
 
 RC ExpressionBinder::bind_unbound_field_expression(
-    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions)
+    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions, bool mutil_tables)
 {
   if (nullptr == expr) {
     return RC::SUCCESS;
@@ -161,7 +167,7 @@ RC ExpressionBinder::bind_unbound_field_expression(
   }
 
   if (0 == strcmp(field_name, "*")) {
-    wildcard_fields(table, bound_expressions);
+    wildcard_fields(table, bound_expressions, mutil_tables);
   } else {
     const FieldMeta *field_meta = table->table_meta().field(field_name);
     if (nullptr == field_meta) {
@@ -171,7 +177,14 @@ RC ExpressionBinder::bind_unbound_field_expression(
 
     Field      field(table, field_meta);
     FieldExpr *field_expr = new FieldExpr(field);
-    field_expr->set_name(field_name);
+    // 多表查询需要 table.field
+    std::string name;
+    if (mutil_tables) {
+      name.append(table_name);
+      name.append(".");
+    }
+    name.append(field_name);
+    field_expr->set_name(name.c_str());
     bound_expressions.emplace_back(field_expr);
   }
 
