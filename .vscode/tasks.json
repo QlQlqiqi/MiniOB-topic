@@ -4,17 +4,9 @@
     },
     "tasks": [
         {
-            "label": "cmake",
-            "command": "cmake",
-            "args": [
-                "-DDEBUG=ON",
-                ".."
-            ]
-        },
-        {
             "label": "build_debug",
             "type": "shell",
-            "command": "bash build.sh debug --make -j4",
+            "command": "bash ${workspaceFolder}/build.sh debug --make -j4",
             "problemMatcher": [],
             "dependsOn":["gen_parser"],
             "group": {
