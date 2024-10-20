@@ -49,11 +49,13 @@ public:
   std::vector<std::unique_ptr<Expression>> &query_expressions() { return query_expressions_; }
   std::vector<std::unique_ptr<Expression>> &group_by() { return group_by_; }
   std::unique_ptr<OrderByStmt>             &order_by() { return order_by_;}
-
+  std::unordered_map<Table* , std::unique_ptr<FilterStmt>> &join_conditions() { return join_conditions_; }
+ 
 private:
   std::vector<std::unique_ptr<Expression>> query_expressions_;
   std::vector<Table *>                     tables_;
   FilterStmt                              *filter_stmt_ = nullptr;
   std::vector<std::unique_ptr<Expression>> group_by_;
   std::unique_ptr<OrderByStmt>             order_by_;
+  std::unordered_map<Table* , std::unique_ptr<FilterStmt>> join_conditions_;
 };

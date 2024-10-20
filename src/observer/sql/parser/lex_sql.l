@@ -136,6 +136,8 @@ cosine_distance                         RETURN_TOKEN(COSINE_DISTANCE);
 inner_product                           RETURN_TOKEN(INNER_PRODUCT);
 NULL                                    RETURN_TOKEN(NULL_T);
 NULLABLE                                RETURN_TOKEN(NULL_T);
+INNER                                   RETURN_TOKEN(INNER);
+JOIN                                    RETURN_TOKEN(JOIN);
 {ID}                                    yylval->string=strdup(yytext); RETURN_TOKEN(ID);
 "("                                     RETURN_TOKEN(LBRACE);
 ")"                                     RETURN_TOKEN(RBRACE);
