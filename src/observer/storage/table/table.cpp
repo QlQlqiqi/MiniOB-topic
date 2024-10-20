@@ -127,6 +127,45 @@ RC Table::create(Db *db, int32_t table_id, const char *path, const char *name, c
   return rc;
 }
 
+RC Table::drop(const char *path, const char *name, const char *base_dir)
+{
+  if (common::is_blank(name)) {
+    LOG_WARN("Name cannot be empty");
+    return RC::INVALID_ARGUMENT;
+  }
+  LOG_INFO("Begin to delete table %s:%s", base_dir, name);
+
+  RC rc = RC::SUCCESS;
+
+  // 删除 metadata 和 buffer pool manager 对应的文件
+  // 这里 remove 失败可能因为权限等问题，不过目前不知道
+  // 新增 RC 会不会影响测试，目前就返回现有的 RC。
+  if (::remove(path) != 0) {
+    LOG_ERROR("Delete table file failed. filename=%s, errmsg=%d:%s", path, errno, strerror(errno));
+    return RC::FILE_NOT_EXIST;
+  }
+  string data_file = table_data_file(base_dir, name);
+  if (::remove(data_file.c_str()) != 0) {
+    LOG_ERROR("Failed to delete disk buffer pool of data file. file name=%s", data_file.c_str());
+    return RC::FILE_NOT_EXIST;
+  }
+
+  for (vector<Index *>::iterator it = indexes_.begin(); it != indexes_.end(); ++it) {
+    Index *index      = *it;
+    string index_file = table_index_file(base_dir_.c_str(), this->name(), index->index_meta().name());
+    if (::remove(index_file.c_str()) != 0) {
+      LOG_ERROR("Delete table file failed. filename=%s, errmsg=%d:%s", index_file.c_str(), errno, strerror(errno));
+      return RC::FILE_NOT_EXIST;
+    }
+    delete index;
+  }
+  indexes_.clear();
+
+  // 删除 index 对应的 file
+  LOG_INFO("Successfully delete table %s:%s", base_dir, name);
+  return rc;
+}
+
 RC Table::open(Db *db, const char *meta_file, const char *base_dir)
 {
   // 加载元数据文件

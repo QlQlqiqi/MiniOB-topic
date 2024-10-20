@@ -161,6 +161,31 @@ RC Db::create_table(const char *table_name, span<const AttrInfoSqlNode> attribut
   return RC::SUCCESS;
 }
 
+RC Db::drop_table(const char *table_name)
+{
+  auto iter = opened_tables_.find(table_name);
+
+  // check table_name
+  if (iter == opened_tables_.end()) {
+    LOG_WARN("%s has not been opened before.", table_name);
+    return RC::SCHEMA_TABLE_NOT_EXIST;
+  }
+  Table *table = iter->second;
+
+  // 文件路径可以移到 Table 模块
+  string table_file_path = table_meta_file(path_.c_str(), table_name);
+  RC rc = table->drop(table_file_path.c_str(), table_name, path_.c_str());
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to detele table %s.", table_name);
+    return rc;
+  }
+  delete table;
+  opened_tables_.erase(iter);
+
+  LOG_INFO("Delete table success. table name=%s", table_name);
+  return RC::SUCCESS;
+}
+
 Table *Db::find_table(const char *table_name) const
 {
   unordered_map<string, Table *>::const_iterator iter = opened_tables_.find(table_name);

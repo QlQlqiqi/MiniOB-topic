@@ -21,9 +21,10 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/iomanip.h"
 #include "common/lang/sstream.h"
 #include "common/lang/string.h"
+#include "datetime.h"
 namespace common {
 
-DateTime::DateTime(string &xml_str)
+DateTime::DateTime(const string &xml_str)
 {
   tm tmp;
   sscanf(xml_str.c_str(),
@@ -41,14 +42,16 @@ DateTime::DateTime(string &xml_str)
 time_t DateTime::str_to_time_t(string &xml_str)
 {
   tm tmp;
-  sscanf(xml_str.c_str(),
+  if(sscanf(xml_str.c_str(),
       "%04d-%02d-%02dT%02d:%02d:%02dZ",
       &tmp.tm_year,
       &tmp.tm_mon,
       &tmp.tm_mday,
       &tmp.tm_hour,
       &tmp.tm_min,
-      &tmp.tm_sec);
+      &tmp.tm_sec)!=6){
+        return -1;
+      }
   m_date = julian_date(tmp.tm_year, tmp.tm_mon, tmp.tm_mday);
   m_time = make_hms(tmp.tm_hour, tmp.tm_min, tmp.tm_sec, 0);
   return to_time_t();
@@ -439,6 +442,40 @@ bool DateTime::is_valid_xml_datetime(const string &str)
     return false;
 
   return true;
+}
+
+bool DateTime::is_leap_year(int year) {
+    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+bool DateTime::is_valid_date(const string &str){
+  // check length. 20 is the length of a xml date
+  if (str.length() < 8)
+    return false;
+
+  // check month, date, hour, min, second is valid
+  tm  tmp;
+  int ret = sscanf(str.c_str(),
+      "%04d-%02d-%02d",
+      &tmp.tm_year,
+      &tmp.tm_mon,
+      &tmp.tm_mday);
+
+
+  if (ret != 3)
+    return false;  // should have 6 match
+
+  int max_day = (tmp.tm_mon== 2) ? (is_leap_year(tmp.tm_year) ? 29 : 28) : 
+            (tmp.tm_mon == 4 || tmp.tm_mon  == 6 || tmp.tm_mon  == 9 || tmp.tm_mon  == 11) ? 30 : 31;
+
+  if (tmp.tm_mon > 12 || tmp.tm_mon <= 0)
+    return false;
+
+  if (tmp.tm_mday > max_day || tmp.tm_mday <= 0)
+    return false;
+
+  return true;
+
 }
 
 }  // namespace common

@@ -774,6 +774,11 @@ bool InternalIndexNodeHandler::validate(const KeyComparator &comparator, DiskBuf
 
 /////////////////////////////////////////////////////////////////////////////////
 
+BplusTreeHandler::~BplusTreeHandler() {
+  delete disk_buffer_pool_;
+  disk_buffer_pool_ = nullptr;
+}
+
 RC BplusTreeHandler::sync()
 {
   if (header_dirty_) {
