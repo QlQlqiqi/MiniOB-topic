@@ -202,6 +202,21 @@ void Value::set_value(const Value &value)
   }
 }
 
+void Value::set_neg()
+{
+  switch (attr_type_) {
+    case AttrType::INTS: {
+      set_int(get_int() * -1);
+    } break;
+    case AttrType::FLOATS: {
+      set_float(get_float() * -1);
+    } break;
+    default: {
+      ASSERT(false, "got an invalid value type in get_neg");
+    } break;
+  }
+}
+
 void Value::set_string_from_other(const Value &other)
 {
   ASSERT(attr_type_ == AttrType::CHARS, "attr type is not CHARS");

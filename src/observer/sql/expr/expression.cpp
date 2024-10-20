@@ -71,6 +71,11 @@ RC ValueExpr::get_column(Chunk &chunk, Column &column)
   return RC::SUCCESS;
 }
 
+void ValueExpr::set_neg()
+{
+  value_.set_neg();
+}
+
 /////////////////////////////////////////////////////////////////////////////////
 CastExpr::CastExpr(unique_ptr<Expression> child, AttrType cast_type) : child_(std::move(child)), cast_type_(cast_type)
 {}
@@ -525,6 +530,26 @@ RC ArithmeticExpr::try_get_value(Value &value) const
   }
 
   return calc_value(left_value, right_value, value);
+}
+
+bool ArithmeticExpr::exp2value(Expression *exp, Value *value)
+{
+  if (exp->type() == ExprType::VALUE) {
+    ValueExpr *tmp = static_cast<ValueExpr *>(exp);
+    *value         = tmp->get_value();
+    return true;
+  }
+  if (exp->type() == ExprType::ARITHMETIC) {
+    ArithmeticExpr *tmp = static_cast<ArithmeticExpr *>(exp);
+    if (tmp->arithmetic_type() != ArithmeticExpr::Type::NEGATIVE && tmp->left()->type() != ExprType::VALUE) {
+      return false;
+    }
+    ValueExpr *lhs = static_cast<ValueExpr *>(tmp->left().get());
+    *value         = lhs->get_value();
+    value->set_neg();
+    return true;
+  }
+  return false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -244,6 +244,7 @@ public:
     return RC::SUCCESS;
   }
 
+  void set_neg();
   ExprType type() const override { return ExprType::VALUE; }
   AttrType value_type() const override { return value_.attr_type(); }
   int      value_length() const override { return value_.length(); }
@@ -421,6 +422,8 @@ public:
   RC try_get_value(Value &value) const override;
 
   Type arithmetic_type() const { return arithmetic_type_; }
+
+  static bool exp2value(Expression *exp, Value *value);
 
   std::unique_ptr<Expression> &left() { return left_; }
   std::unique_ptr<Expression> &right() { return right_; }
