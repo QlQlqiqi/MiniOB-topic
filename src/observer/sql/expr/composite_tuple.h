@@ -42,6 +42,16 @@ public:
   RC  spec_at(int index, TupleCellSpec &spec) const override;
   RC  find_cell(const TupleCellSpec &spec, Value &cell) const override;
 
+  std::unique_ptr<Tuple> clone() const override{
+    std::unique_ptr<CompositeTuple> clone_ = make_unique<CompositeTuple>();
+    clone_->tuples_.reserve(this->tuples_.size());
+    assert(clone_->tuples_.size() == this->tuples_.size());
+    for(size_t i = 0; i < this->tuples_.size(); i++){
+      clone_->tuples_[i] = this->tuples_[i]->clone();
+    }
+    return clone_;
+  }
+
   void   add_tuple(std::unique_ptr<Tuple> tuple);
   Tuple &tuple_at(size_t index);
 
