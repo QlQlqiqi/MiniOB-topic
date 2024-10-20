@@ -19,7 +19,6 @@ See the Mulan PSL v2 for more details. */
 #include <memory>
 
 #include "common/value.h"
-
 class Expression;
 
 /**
@@ -82,6 +81,25 @@ enum CompOp
 // };
 
 /**
+ * @brief 表示OrderBy 的顺序
+ * @ingroup SQLParser
+ */
+enum class OrderOp{
+  ASC,
+  DESC,
+};
+/**
+ * @brief 描述一个order by语句
+ * @ingroup SQLParser
+ * @details desc table 是查询表结构信息的语句
+ */
+struct OrderBySqlNode
+{
+  std::unique_ptr<Expression> unbound_field;
+  OrderOp order_op;
+};
+
+/**
  * @brief 描述一个select语句
  * @ingroup SQLParser
  * @details 一个正常的select语句描述起来比这个要复杂很多，这里做了简化。
@@ -99,6 +117,7 @@ struct SelectSqlNode
   // std::vector<ConditionSqlNode>            conditions;   ///< 查询条件，使用AND串联起来多个条件
   Expression                              *conditions = nullptr;  ///< 查询条件
   std::vector<std::unique_ptr<Expression>> group_by;              ///< group by clause
+  std::vector<std::unique_ptr<OrderBySqlNode>> order_by; ///< order by clause
 };
 
 /**
@@ -233,6 +252,7 @@ struct SetVariableSqlNode
   std::string name;
   Value       value;
 };
+
 
 class ParsedSqlNode;
 
