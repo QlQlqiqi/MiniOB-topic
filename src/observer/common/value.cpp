@@ -18,13 +18,17 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/exception.h"
 #include "common/lang/sstream.h"
 #include "common/lang/string.h"
+#include "common/time/datetime.h"
 #include "common/log/log.h"
+#include "value.h"
 
 Value::Value(int val) { set_int(val); }
 
 Value::Value(float val) { set_float(val); }
 
 Value::Value(bool val) { set_boolean(val); }
+
+Value::Value(common::DateTime val) { set_date(val); }
 
 Value::Value(const char *s, int len /*= 0*/) { set_string(s, len); }
 
@@ -131,6 +135,10 @@ void Value::set_data(char *data, int length)
       value_.bool_value_ = *(int *)data != 0;
       length_            = length;
     } break;
+    case AttrType::DATES:{
+      value_.int_value_  = *(int *)data;
+      length_            = length;
+    }break;
     default: {
       LOG_WARN("unknown data type: %d", attr_type_);
     } break;
@@ -157,6 +165,14 @@ void Value::set_boolean(bool val)
   reset();
   attr_type_         = AttrType::BOOLEANS;
   value_.bool_value_ = val;
+  length_            = sizeof(val);
+}
+
+void Value::set_date(common::DateTime val)
+{
+  reset();
+  attr_type_         = AttrType::DATES;
+  value_.date_time_value_ = val; 
   length_            = sizeof(val);
 }
 
@@ -192,6 +208,9 @@ void Value::set_value(const Value &value)
     } break;
     case AttrType::CHARS: {
       set_string(value.get_string().c_str());
+    } break;
+    case AttrType::DATES:{
+      set_date(value.get_date());
     } break;
     case AttrType::BOOLEANS: {
       set_boolean(value.get_boolean());
@@ -272,6 +291,9 @@ int Value::get_int() const
     case AttrType::BOOLEANS: {
       return (int)(value_.bool_value_);
     }
+    case AttrType::DATES: {
+      return (int)(value_.int_value_);
+    }
     default: {
       LOG_WARN("unknown data type. type=%d", attr_type_);
       return 0;
@@ -297,6 +319,9 @@ float Value::get_float() const
     case AttrType::FLOATS: {
       return value_.float_value_;
     } break;
+    case AttrType::DATES: {
+      return float(value_.int_value_);
+    } break;
     case AttrType::BOOLEANS: {
       return float(value_.bool_value_);
     } break;
@@ -306,6 +331,25 @@ float Value::get_float() const
     }
   }
   return 0;
+}
+common::DateTime Value::get_date()  const{
+  switch (attr_type_) {
+    case AttrType::CHARS: 
+    case AttrType::INTS: 
+    case AttrType::FLOATS: 
+    case AttrType::BOOLEANS: {
+      LOG_TRACE("the value type is not date.");
+      return common::DateTime();
+    }
+    case AttrType::DATES: {
+      return value_.date_time_value_;
+    }
+    default: {
+      LOG_WARN("unknown data type. type=%d", attr_type_);
+      return common::DateTime();
+    }
+  }
+  return common::DateTime();
 }
 
 string Value::get_string() const { return this->to_string(); }
@@ -337,6 +381,9 @@ bool Value::get_boolean() const
     case AttrType::FLOATS: {
       float val = value_.float_value_;
       return val >= EPSILON || val <= -EPSILON;
+    } break;
+    case AttrType::DATES: {
+      return value_.int_value_ != 0;
     } break;
     case AttrType::BOOLEANS: {
       return value_.bool_value_;
