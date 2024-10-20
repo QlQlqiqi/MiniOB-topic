@@ -163,8 +163,7 @@ RC Stmt::bind_filter_stmt(Db *db, const std::vector<std::string> &relations, Fil
         return rc;
       }
       ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
-      std::shared_ptr<Expression> l_expr = std::move(filter_expressions[0]);
-      unit->set_left(l_expr);
+      unit->set_left(std::move(filter_expressions[0]));
       filter_expressions.clear();
     }
 
@@ -176,8 +175,7 @@ RC Stmt::bind_filter_stmt(Db *db, const std::vector<std::string> &relations, Fil
         return rc;
       }
       ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
-      std::shared_ptr<Expression> r_expr = std::move(filter_expressions[0]);
-      unit->set_right(r_expr);
+      unit->set_right(std::move(filter_expressions[0]));
       filter_expressions.clear();
     }
   }

@@ -84,6 +84,12 @@ RC CastExpr::cast(const Value &value, Value &cast_value) const
     cast_value = value;
     return rc;
   }
+
+  // 如果 value 是 float，且自己是 int，那么转为 float
+  if (value.attr_type() == AttrType::FLOATS && value_type() == AttrType::INTS) {
+    return Value::cast_to(value, AttrType::FLOATS, cast_value);
+  }
+
   rc = Value::cast_to(value, cast_type_, cast_value);
   return rc;
 }
@@ -324,8 +330,12 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
 {
   RC rc = RC::SUCCESS;
 
-  const AttrType target_type = value_type();
-  value.set_type(target_type);
+  // 如果 left_value 和 right_value 有一个是 nulls，则结果为 null
+  if (left_value.attr_type() == AttrType::NULLS || right_value.attr_type() == AttrType::NULLS) {
+    value.set_type(AttrType::NULLS);
+  } else {
+    value.set_type(value_type());
+  }
 
   switch (arithmetic_type_) {
     case Type::ADD: {

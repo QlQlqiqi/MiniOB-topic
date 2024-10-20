@@ -98,8 +98,8 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
 
   filter_unit = new FilterUnit;
   filter_unit->set_comp(condition.comp);
-  filter_unit->set_left(condition.left);
-  filter_unit->set_right(condition.right);
+  filter_unit->set_left(condition.left->Clone());
+  filter_unit->set_right(condition.right->Clone());
 
   // 检查两个类型是否能够比较
   return rc;

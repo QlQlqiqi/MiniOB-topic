@@ -26,8 +26,8 @@ class FieldMeta;
 
 struct FilterObj
 {
-  FilterObj(std::shared_ptr<Expression> expr = nullptr) : expr_(expr) {}
-  std::shared_ptr<Expression> expr_;
+  explicit FilterObj(std::unique_ptr<Expression> &&expr = nullptr) : expr_(std::move(expr)) {}
+  std::unique_ptr<Expression> expr_;
 };
 
 class FilterUnit
@@ -40,8 +40,8 @@ public:
 
   CompOp comp() const { return comp_; }
 
-  void set_left(const FilterObj &obj) { left_ = obj; }
-  void set_right(const FilterObj &obj) { right_ = obj; }
+  void set_left(std::unique_ptr<Expression> &&expr) { left_ = FilterObj(std::move(expr)); }
+  void set_right(std::unique_ptr<Expression> &&expr) { right_ = FilterObj(std::move(expr)); }
 
   const FilterObj &left() const { return left_; }
   const FilterObj &right() const { return right_; }

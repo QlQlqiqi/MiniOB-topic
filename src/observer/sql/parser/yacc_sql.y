@@ -616,13 +616,11 @@ condition_list:
     }
     | condition {
       $$ = new std::vector<ConditionSqlNode>;
-      $$->emplace_back(*$1);
-      delete $1;
+      $$->emplace_back(std::move(*$1));
     }
     | condition AND condition_list {
       $$ = $3;
-      $$->emplace_back(*$1);
-      delete $1;
+      $$->emplace_back(std::move(*$1));
     }
     ;
 condition:
