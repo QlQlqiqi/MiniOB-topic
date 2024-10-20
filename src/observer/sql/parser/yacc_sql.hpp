@@ -72,67 +72,57 @@ extern int yydebug;
     INSERT = 273,                  /* INSERT  */
     DELETE = 274,                  /* DELETE  */
     UPDATE = 275,                  /* UPDATE  */
-    LBRACE = 276,                  /* LBRACE  */
-    RBRACE = 277,                  /* RBRACE  */
-    COMMA = 278,                   /* COMMA  */
-    TRX_BEGIN = 279,               /* TRX_BEGIN  */
-    TRX_COMMIT = 280,              /* TRX_COMMIT  */
-    TRX_ROLLBACK = 281,            /* TRX_ROLLBACK  */
-    INT_T = 282,                   /* INT_T  */
-    STRING_T = 283,                /* STRING_T  */
-    FLOAT_T = 284,                 /* FLOAT_T  */
-    VECTOR_T = 285,                /* VECTOR_T  */
-    IS = 286,                      /* IS  */
-    NOT = 287,                     /* NOT  */
-    NULL_T = 288,                  /* NULL_T  */
-    DATE_T = 289,                  /* DATE_T  */
-    HELP = 290,                    /* HELP  */
-    EXIT = 291,                    /* EXIT  */
-    DOT = 292,                     /* DOT  */
-    INTO = 293,                    /* INTO  */
-    VALUES = 294,                  /* VALUES  */
-    FROM = 295,                    /* FROM  */
-    WHERE = 296,                   /* WHERE  */
-    AND = 297,                     /* AND  */
-    OR = 298,                      /* OR  */
-    SET = 299,                     /* SET  */
-    ON = 300,                      /* ON  */
-    LOAD = 301,                    /* LOAD  */
-    DATA = 302,                    /* DATA  */
-    INFILE = 303,                  /* INFILE  */
-    EXPLAIN = 304,                 /* EXPLAIN  */
-    STORAGE = 305,                 /* STORAGE  */
-    FORMAT = 306,                  /* FORMAT  */
-    EQ = 307,                      /* EQ  */
-    LT = 308,                      /* LT  */
-    GT = 309,                      /* GT  */
-    LE = 310,                      /* LE  */
-    GE = 311,                      /* GE  */
-    NE = 312,                      /* NE  */
-    LIKE = 313,                    /* LIKE  */
-    COUNT = 314,                   /* COUNT  */
-    SUM = 315,                     /* SUM  */
-    AVG = 316,                     /* AVG  */
-    MAX = 317,                     /* MAX  */
-    MIN = 318,                     /* MIN  */
-<<<<<<< HEAD
-    NUMBER = 319,                  /* NUMBER  */
-    FLOAT = 320,                   /* FLOAT  */
-    ID = 321,                      /* ID  */
-    SSS = 322,                     /* SSS  */
-    DATE_STR = 323,                /* DATE_STR  */
-    UMINUS = 324                   /* UMINUS  */
-=======
-    L2_DISTANCE = 319,             /* L2_DISTANCE  */
-    COSINE_DISTANCE = 320,         /* COSINE_DISTANCE  */
-    INNER_PRODUCT = 321,           /* INNER_PRODUCT  */
-    NUMBER = 322,                  /* NUMBER  */
-    FLOAT = 323,                   /* FLOAT  */
-    ID = 324,                      /* ID  */
-    SSS = 325,                     /* SSS  */
-    DATE_STR = 326,                /* DATE_STR  */
-    UMINUS = 327                   /* UMINUS  */
->>>>>>> acfcd6a (10.24 暂存)
+    INNER = 276,                   /* INNER  */
+    JOIN = 277,                    /* JOIN  */
+    LBRACE = 278,                  /* LBRACE  */
+    RBRACE = 279,                  /* RBRACE  */
+    COMMA = 280,                   /* COMMA  */
+    TRX_BEGIN = 281,               /* TRX_BEGIN  */
+    TRX_COMMIT = 282,              /* TRX_COMMIT  */
+    TRX_ROLLBACK = 283,            /* TRX_ROLLBACK  */
+    INT_T = 284,                   /* INT_T  */
+    STRING_T = 285,                /* STRING_T  */
+    FLOAT_T = 286,                 /* FLOAT_T  */
+    VECTOR_T = 287,                /* VECTOR_T  */
+    IS = 288,                      /* IS  */
+    NOT = 289,                     /* NOT  */
+    NULL_T = 290,                  /* NULL_T  */
+    DATE_T = 291,                  /* DATE_T  */
+    HELP = 292,                    /* HELP  */
+    EXIT = 293,                    /* EXIT  */
+    DOT = 294,                     /* DOT  */
+    INTO = 295,                    /* INTO  */
+    VALUES = 296,                  /* VALUES  */
+    FROM = 297,                    /* FROM  */
+    WHERE = 298,                   /* WHERE  */
+    AND = 299,                     /* AND  */
+    OR = 300,                      /* OR  */
+    SET = 301,                     /* SET  */
+    ON = 302,                      /* ON  */
+    LOAD = 303,                    /* LOAD  */
+    DATA = 304,                    /* DATA  */
+    INFILE = 305,                  /* INFILE  */
+    EXPLAIN = 306,                 /* EXPLAIN  */
+    STORAGE = 307,                 /* STORAGE  */
+    FORMAT = 308,                  /* FORMAT  */
+    EQ = 309,                      /* EQ  */
+    LT = 310,                      /* LT  */
+    GT = 311,                      /* GT  */
+    LE = 312,                      /* LE  */
+    GE = 313,                      /* GE  */
+    NE = 314,                      /* NE  */
+    LIKE = 315,                    /* LIKE  */
+    COUNT = 316,                   /* COUNT  */
+    SUM = 317,                     /* SUM  */
+    AVG = 318,                     /* AVG  */
+    MAX = 319,                     /* MAX  */
+    MIN = 320,                     /* MIN  */
+    NUMBER = 321,                  /* NUMBER  */
+    FLOAT = 322,                   /* FLOAT  */
+    ID = 323,                      /* ID  */
+    SSS = 324,                     /* SSS  */
+    DATE_STR = 325,                /* DATE_STR  */
+    UMINUS = 326                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -141,11 +131,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-<<<<<<< HEAD
-#line 132 "yacc_sql.y"
-=======
-#line 146 "yacc_sql.y"
->>>>>>> acfcd6a (10.24 暂存)
+#line 134 "yacc_sql.y"
 
   ParsedSqlNode *                            sql_node;
   Value *                                    value;
@@ -161,16 +147,14 @@ union YYSTYPE
   std::vector<std::unique_ptr<OrderBySqlNode>>* order_by_list;
   OrderBySqlNode*                            order_unit;
   OrderOp                                    order_op;
+  InnerJoinUnit*                             inner_join_unit;
+  InnerJoinSqlNode*                          inner_join;
   char *                                     string;
   int                                        number;
   float                                      floats;
   bool                                       bools;
 
-<<<<<<< HEAD
-#line 154 "yacc_sql.hpp"
-=======
-#line 157 "yacc_sql.hpp"
->>>>>>> acfcd6a (10.24 暂存)
+#line 158 "yacc_sql.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;
