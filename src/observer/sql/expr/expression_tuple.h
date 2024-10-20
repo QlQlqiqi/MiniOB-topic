@@ -31,6 +31,12 @@ public:
 
   int cell_num() const override { return static_cast<int>(expressions_.size()); }
 
+  std::unique_ptr<Tuple> clone() const override{
+    std::unique_ptr<ExpressionTuple> clone_ = make_unique<ExpressionTuple>(*this);
+    clone_->set_tuple(this->child_tuple_->clone().release());
+    return clone_;
+  }
+
   RC cell_at(int index, Value &cell) const override
   {
     if (index < 0 || index >= cell_num()) {
