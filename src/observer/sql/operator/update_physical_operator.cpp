@@ -55,20 +55,47 @@ RC UpdatePhysicalOperator::open(Trx *trx)
   child->close();
 
   for (Record &record : records_) {
-    Record old;
-    table_->get_record(record.rid(), old);
-    if (RC rc = trx_->delete_record(table_, old); rc != RC::SUCCESS) {
+    Record table_record;
+    table_->get_record(record.rid(), table_record);
+
+    // Prepare a record. BTW, a `record` in `records_` does not refs into the table.
+    for (size_t i = 0; i < values_.size(); ++i) {
+      auto &f = field_metas_[i];
+      // record.set_data_owner(nullptr, 0);
+      RC rc = table_record.set_field(f.offset(), f.len(), values_[i].data());
+      if (rc != RC::SUCCESS) {
+        LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+        trx->rollback();
+        return rc;
+      }
+
+      if (RC rc = trx->delete_record(table_, record); rc != RC::SUCCESS) {
+        LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
+        trx->rollback();
+        return rc;
+      }
+      if (RC rc = trx->insert_record(table_, table_record); rc != RC::SUCCESS) {
+        LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
+        trx->rollback();
+        return rc;
+      }
+    }
+
+    /*if (RC rc = trx_->delete_record(table_, old_r); rc != RC::SUCCESS)
+    {
       LOG_WARN("failed to delete record: %s", strrc(rc));
       return rc;
     }
-    if (RC rc = trx_->insert_record(table_, record); rc != RC::SUCCESS) {
+    if (RC rc = trx_->insert_record(table_, new_r); rc != RC::SUCCESS)
+    {
       LOG_WARN("failed to insert record: %s", strrc(rc));
-      if (RC rc2 = trx_->insert_record(table_, old); rc2 != RC::SUCCESS) {
+      if (RC rc2 = trx_->insert_record(table_, old_r); rc2 != RC::SUCCESS)
+      {
         LOG_ERROR("failed to rollback old record: %s", strrc(rc2));
         return rc2;
       }
       return rc;
-    }
+    }*/
   }
 
   return RC::SUCCESS;
