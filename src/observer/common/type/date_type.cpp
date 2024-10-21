@@ -60,6 +60,26 @@ RC DateType::set_value_from_str(Value &val, const string &data) const
   return rc;
 }
 
+RC DateType::cast_to(const Value &val, AttrType type, Value &result) const
+{
+  result.set_type(type);
+  switch (type) {
+    case AttrType::DATES: {
+      result = val;
+      break;
+    }
+    case AttrType::NULLS: {
+      result.set_null();
+      break;
+    }
+    default: {
+      LOG_WARN("failed to cast to: from %s to %s", attr_type_to_string(attr_type_), attr_type_to_string(type));
+      return RC::UNSUPPORTED;
+    }
+  }
+  return RC::SUCCESS;
+}
+
 RC DateType::to_string(const Value &val, string &result) const
 {
   result = common::Date(val.value_.date_time_value_).to_string();

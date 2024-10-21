@@ -199,8 +199,19 @@ public:
 
     FieldExpr       *field_expr = speces_[index];
     const FieldMeta *field_meta = field_expr->field().meta();
+    // 如果 field 为 nullable，那么需要先读取一个字节，判断 value 是否为 null
+    bool is_null = false;
+    if(field_meta->nullable()) {
+      is_null = *(this->record_->data() + field_meta->offset()) != 0;
+    }
+    // 如果为 null，那么后续的数据将无意义
+    if(is_null) {
+      cell.set_null();
+      return RC::SUCCESS;
+    }
     cell.set_type(field_meta->type());
-    cell.set_data(this->record_->data() + field_meta->offset(), field_meta->len());
+    cell.set_data(this->record_->data() + field_meta->offset() + field_meta->nullable(),
+        field_meta->len() - field_meta->nullable());
     return RC::SUCCESS;
   }
 

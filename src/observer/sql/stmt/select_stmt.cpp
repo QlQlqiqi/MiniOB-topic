@@ -61,12 +61,15 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     table_map.insert({table_name, table});
   }
 
+  bool mutil_tables = tables.size() > 1;
+
   // collect query fields in `select` statement
   vector<unique_ptr<Expression>> bound_expressions;
   ExpressionBinder expression_binder(binder_context);
   
   for (unique_ptr<Expression> &expression : select_sql.expressions) {
-    RC rc = expression_binder.bind_expression(expression, bound_expressions);
+    // 多表联查的时候，project 算子应该输出 table.field
+    RC rc = expression_binder.bind_expression(expression, bound_expressions, mutil_tables);
     if (OB_FAIL(rc)) {
       LOG_INFO("bind expression failed. rc=%s", strrc(rc));
       return rc;
@@ -89,16 +92,14 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
 
   // create filter statement in `where` statement
   FilterStmt *filter_stmt = nullptr;
-  RC          rc          = FilterStmt::create(db,
-      default_table,
-      &table_map,
-      select_sql.conditions.data(),
-      static_cast<int>(select_sql.conditions.size()),
-      filter_stmt);
+  RC          rc          = FilterStmt::create(db, default_table, &table_map, select_sql.conditions, filter_stmt);
   if (rc != RC::SUCCESS) {
     LOG_WARN("cannot construct filter stmt");
     return rc;
   }
+
+  // bind exprs in filter statement
+  Stmt::bind_filter_stmt(db, select_sql.relations, filter_stmt);
 
   // everything alright
   SelectStmt *select_stmt = new SelectStmt();

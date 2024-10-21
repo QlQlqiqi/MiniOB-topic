@@ -52,22 +52,40 @@ RC IntegerType::negative(const Value &val, Value &result) const
   return RC::SUCCESS;
 }
 
+int IntegerType::cast_cost(AttrType type)
+{
+  if (type == AttrType::FLOATS || type == AttrType::NULLS || type == AttrType::BOOLEANS) {
+    return 0;
+  }
+  return INT32_MAX;
+}
+
 RC IntegerType::cast_to(const Value &val, AttrType type, Value &result) const
 {
-  switch (type)
-  {
-  case AttrType::FLOATS:
-  {
-    int num = val.get_int();
-    result.set_type(AttrType::FLOATS);
-    result.set_float(static_cast<float>(num));
-    return RC::SUCCESS;
-  } break;
-  default:
-  {
-    return RC::UNSUPPORTED;
-  } break;
+  result.set_type(type);
+  switch (type) {
+    case AttrType::INTS: {
+      result = val;
+      break;
+    }
+    case AttrType::FLOATS: {
+      result.set_float(val.get_float());
+      break;
+    }
+    case AttrType::BOOLEANS: {
+      result.set_boolean(val.get_boolean());
+      break;
+    }
+    case AttrType::NULLS: {
+      result.set_null();
+      break;
+    }
+    default: {
+      LOG_WARN("failed to cast to: from %s to %s", attr_type_to_string(attr_type_), attr_type_to_string(type));
+      return RC::UNSUPPORTED;
+    }
   }
+  return RC::SUCCESS;
 }
 
 RC IntegerType::set_value_from_str(Value &val, const string &data) const

@@ -111,6 +111,17 @@ void Value::reset()
   own_data_  = false;
 }
 
+void Value::set_null()
+{
+  reset();
+  attr_type_ = AttrType::NULLS;
+}
+
+bool Value::is_null() const
+{
+  return attr_type_ == AttrType::NULLS;
+}
+
 void Value::set_data(char *data, int length)
 {
   switch (attr_type_) {
@@ -211,6 +222,21 @@ void Value::set_value(const Value &value)
     } break;
     default: {
       ASSERT(false, "got an invalid value type");
+    } break;
+  }
+}
+
+void Value::set_neg()
+{
+  switch (attr_type_) {
+    case AttrType::INTS: {
+      set_int(get_int() * -1);
+    } break;
+    case AttrType::FLOATS: {
+      set_float(get_float() * -1);
+    } break;
+    default: {
+      ASSERT(false, "got an invalid value type in get_neg");
     } break;
   }
 }

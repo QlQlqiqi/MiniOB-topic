@@ -94,6 +94,11 @@ RC ValueExpr::get_column(Chunk &chunk, Column &column)
   return RC::SUCCESS;
 }
 
+void ValueExpr::set_neg()
+{
+  value_.set_neg();
+}
+
 /////////////////////////////////////////////////////////////////////////////////
 CastExpr::CastExpr(unique_ptr<Expression> child, AttrType cast_type) : child_(std::move(child)), cast_type_(cast_type)
 {}
@@ -107,6 +112,12 @@ RC CastExpr::cast(const Value &value, Value &cast_value) const
     cast_value = value;
     return rc;
   }
+
+  // 如果 value 是 float，且自己是 int，那么转为 float
+  if (value.attr_type() == AttrType::FLOATS && value_type() == AttrType::INTS) {
+    return Value::cast_to(value, AttrType::FLOATS, cast_value);
+  }
+
   rc = Value::cast_to(value, cast_type_, cast_value);
   return rc;
 }
@@ -135,6 +146,10 @@ RC CastExpr::try_get_value(Value &result) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ComparisonExpr::ComparisonExpr(CompOp comp, Expression* left, Expression* right)
+    : comp_(comp), left_(left), right_(right)
+{}
+
 ComparisonExpr::ComparisonExpr(CompOp comp, unique_ptr<Expression> left, unique_ptr<Expression> right)
     : comp_(comp), left_(std::move(left)), right_(std::move(right))
 {}
@@ -145,6 +160,21 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
 {
   RC  rc         = RC::SUCCESS;
   int cmp_result;
+
+  if (comp_ == IS_NULL || comp_ == IS_NOT_NULL) {
+    ASSERT(right.is_null(), "right value must be null");
+    result = comp_ == IS_NULL ? left.is_null() : !left.is_null();
+    return rc;
+  }
+
+  // TODO(qiqi): 需要判断 left 和 value 如果不能比较应该如何处理，
+  // 比如：1 < null、1 < bool，默认是为 false，这里目前只是对 null 进行
+  // 特判，事实上需要处理所有不能比较的类型，让结果为 false
+  if(left.is_null() || right.is_null()) {
+    result = false;
+    return rc;
+  }
+
   if(comp_ != LIKE_OP && comp_ != NOT_LIKE_OP){
     cmp_result = left.compare(right);
   }
@@ -285,6 +315,13 @@ ConjunctionExpr::ConjunctionExpr(Type type, vector<unique_ptr<Expression>> &chil
     : conjunction_type_(type), children_(std::move(children))
 {}
 
+ConjunctionExpr::ConjunctionExpr(Type type, Expression* left, Expression* right)
+    : conjunction_type_(type)
+{
+  children_.emplace_back(left);
+  children_.emplace_back(right);
+}
+
 RC ConjunctionExpr::get_value(const Tuple &tuple, Value &value) const
 {
   RC rc = RC::SUCCESS;
@@ -335,6 +372,11 @@ bool ArithmeticExpr::equal(const Expression &other) const
 }
 AttrType ArithmeticExpr::value_type() const
 {
+  // 任何数和 null 比较均为 null
+  if ((left_ && left_->value_type() == AttrType::NULLS) || (right_ && right_->value_type() == AttrType::NULLS)) {
+    return AttrType::NULLS;
+  }
+
   if (!right_) {
     return left_->value_type();
   }
@@ -351,8 +393,12 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
 {
   RC rc = RC::SUCCESS;
 
-  const AttrType target_type = value_type();
-  value.set_type(target_type);
+  // 如果 left_value 和 right_value 有一个是 nulls，则结果为 null
+  if (left_value.attr_type() == AttrType::NULLS || right_value.attr_type() == AttrType::NULLS) {
+    value.set_type(AttrType::NULLS);
+  } else {
+    value.set_type(value_type());
+  }
 
   switch (arithmetic_type_) {
     case Type::ADD: {
@@ -463,10 +509,12 @@ RC ArithmeticExpr::get_value(const Tuple &tuple, Value &value) const
     LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
     return rc;
   }
-  rc = right_->get_value(tuple, right_value);
-  if (rc != RC::SUCCESS) {
-    LOG_WARN("failed to get value of right expression. rc=%s", strrc(rc));
-    return rc;
+  if (right_) {
+    rc = right_->get_value(tuple, right_value);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to get value of right expression. rc=%s", strrc(rc));
+      return rc;
+    }
   }
   return calc_value(left_value, right_value, value);
 }
@@ -540,6 +588,26 @@ RC ArithmeticExpr::try_get_value(Value &value) const
   }
 
   return calc_value(left_value, right_value, value);
+}
+
+bool ArithmeticExpr::exp2value(Expression *exp, Value *value)
+{
+  if (exp->type() == ExprType::VALUE) {
+    ValueExpr *tmp = static_cast<ValueExpr *>(exp);
+    *value         = tmp->get_value();
+    return true;
+  }
+  if (exp->type() == ExprType::ARITHMETIC) {
+    ArithmeticExpr *tmp = static_cast<ArithmeticExpr *>(exp);
+    if (tmp->arithmetic_type() != ArithmeticExpr::Type::NEGATIVE && tmp->left()->type() != ExprType::VALUE) {
+      return false;
+    }
+    ValueExpr *lhs = static_cast<ValueExpr *>(tmp->left().get());
+    *value         = lhs->get_value();
+    value->set_neg();
+    return true;
+  }
+  return false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

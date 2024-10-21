@@ -55,9 +55,12 @@ RC DefaultConditionFilter::init(const ConDesc &left, const ConDesc &right, AttrT
   return RC::SUCCESS;
 }
 
+  // 这里未实现，因为我看代码似乎用不到这里，先注释了
+  // 注释开始
+  /*
 RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
 {
-  const TableMeta &table_meta = table.table_meta();
+  // const TableMeta &table_meta = table.table_meta();
   ConDesc          left;
   ConDesc          right;
 
@@ -116,6 +119,8 @@ RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
 
   return init(left, right, type_left, condition.comp);
 }
+  */
+  // 注释结束
 
 bool DefaultConditionFilter::filter(const Record &rec) const
 {
@@ -173,6 +178,10 @@ RC CompositeConditionFilter::init(const ConditionFilter *filters[], int filter_n
   return init(filters, filter_num, false);
 }
 
+
+  // 这里未实现，因为我看代码似乎用不到这里，先注释了
+  // 注释开始
+  /*
 RC CompositeConditionFilter::init(Table &table, const ConditionSqlNode *conditions, int condition_num)
 {
   if (condition_num == 0) {
@@ -201,6 +210,8 @@ RC CompositeConditionFilter::init(Table &table, const ConditionSqlNode *conditio
   }
   return init((const ConditionFilter **)condition_filters, condition_num, true);
 }
+  */
+  // 注释结束
 
 bool CompositeConditionFilter::filter(const Record &rec) const
 {
