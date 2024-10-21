@@ -52,6 +52,24 @@ RC IntegerType::negative(const Value &val, Value &result) const
   return RC::SUCCESS;
 }
 
+RC IntegerType::cast_to(const Value &val, AttrType type, Value &result) const
+{
+  switch (type)
+  {
+  case AttrType::FLOATS:
+  {
+    int num = val.get_int();
+    result.set_type(AttrType::FLOATS);
+    result.set_float(static_cast<float>(num));
+    return RC::SUCCESS;
+  } break;
+  default:
+  {
+    return RC::UNSUPPORTED;
+  } break;
+  }
+}
+
 RC IntegerType::set_value_from_str(Value &val, const string &data) const
 {
   RC                rc = RC::SUCCESS;

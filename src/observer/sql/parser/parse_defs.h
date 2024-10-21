@@ -56,15 +56,6 @@ enum CompOp
   NO_OP
 };
 
-enum AggregationOp
-{
-  AGGR_COUNT,
-  AGGR_SUM,
-  AGGR_AVG,
-  AGGR_MAX,
-  AGGR_MIN
-};
-
 /**
  * @brief 表示一个条件比较
  * @ingroup SQLParser

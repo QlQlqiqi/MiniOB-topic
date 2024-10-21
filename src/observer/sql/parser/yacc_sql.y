@@ -43,12 +43,12 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   return expr;
 }
 
-UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
-                                           Expression *child,
-                                           const char *sql_string,
-                                           YYLTYPE *llocp)
+UnboundAggregateExpr *create_aggregate_expression(const char* type,
+                                                  Expression *child,
+                                                  const char *sql_string,
+                                                  YYLTYPE *llocp)
 {
-  UnboundAggregateExpr *expr = new UnboundAggregateExpr(aggregate_name, child);
+  UnboundAggregateExpr *expr = new UnboundAggregateExpr(type, child);
   expr->set_name(token_name(sql_string, llocp));
   return expr;
 }
@@ -130,7 +130,6 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
   ConditionSqlNode *                         condition;
   Value *                                    value;
   enum CompOp                                comp;
-  enum AggregationOp                         aggr;
   RelAttrSqlNode *                           rel_attr;
   std::vector<AttrInfoSqlNode> *             attr_infos;
   AttrInfoSqlNode *                          attr_info;
@@ -160,7 +159,6 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <number>              number
 %type <string>              relation
 %type <comp>                comp_op
-%type <aggr>                aggregation_op
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
@@ -528,13 +526,6 @@ calc_stmt:
       delete $2;
     }
     ;
-    
-aggregation_op:
-      COUNT { $$ = AGGR_COUNT; }
-    | SUM { $$ = AGGR_SUM; }
-    | AVG { $$ = AGGR_AVG; }
-    | MAX { $$ = AGGR_MAX; }
-    | MIN { $$ = AGGR_MIN; }
 
 expression_list:
     expression
@@ -583,8 +574,35 @@ expression:
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
-    | aggregation_op LBRACE expression RBRACE {
-        $$ = create_aggregate_expression($1, $3, sql_string, &@$)
+    | COUNT LBRACE expression RBRACE {
+      $$ = create_aggregate_expression("count", $3, sql_string, &@$);
+    }
+    | SUM LBRACE expression RBRACE {
+      $$ = create_aggregate_expression("sum", $3, sql_string, &@$);
+    }
+    | AVG LBRACE expression RBRACE {
+      $$ = create_aggregate_expression("avg", $3, sql_string, &@$);
+    }
+    | MIN LBRACE expression RBRACE {
+      $$ = create_aggregate_expression("min", $3, sql_string, &@$);
+    }
+    | MAX LBRACE expression RBRACE {
+      $$ = create_aggregate_expression("max", $3, sql_string, &@$);
+    }
+    | COUNT LBRACE expression_list RBRACE {
+      $$ = create_aggregate_expression("count", nullptr, sql_string, &@$);
+    }
+    | SUM LBRACE expression_list RBRACE {
+      $$ = create_aggregate_expression("sum", nullptr, sql_string, &@$);
+    }
+    | AVG LBRACE expression_list RBRACE {
+      $$ = create_aggregate_expression("avg", nullptr, sql_string, &@$);
+    }
+    | MIN LBRACE expression_list RBRACE {
+      $$ = create_aggregate_expression("min", nullptr, sql_string, &@$);
+    }
+    | MAX LBRACE expression_list RBRACE {
+      $$ = create_aggregate_expression("max", nullptr, sql_string, &@$);
     }
     | '*' {
       $$ = new StarExpr();
