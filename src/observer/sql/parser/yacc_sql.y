@@ -169,6 +169,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char* type,
 %type <string>              storage_format
 %type <relation_list>       rel_list
 %type <expression>          expression
+%type <expression>          group_by_expression_list
 %type <expression_list>     expression_list
 %type <expression_list>     group_by
 %type <sql_node>            calc_stmt
@@ -543,6 +544,24 @@ expression_list:
       $$->emplace($$->begin(), $1);
     }
     ;
+
+group_by_expression_list:
+  /* empty */
+  {
+    $$ = nullptr;
+  }
+  | expression COMMA expression_list
+  {
+    $$ = nullptr;
+    delete $1;
+    delete $3;
+  }
+  | expression
+  {
+    $$ = $1;
+  }
+  ;
+
 expression:
     expression '+' expression {
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::ADD, $1, $3, sql_string, &@$);
@@ -574,35 +593,20 @@ expression:
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
-    | COUNT LBRACE expression RBRACE {
+    | COUNT LBRACE group_by_expression_list RBRACE {
       $$ = create_aggregate_expression("count", $3, sql_string, &@$);
     }
-    | SUM LBRACE expression RBRACE {
+    | SUM LBRACE group_by_expression_list RBRACE {
       $$ = create_aggregate_expression("sum", $3, sql_string, &@$);
     }
-    | AVG LBRACE expression RBRACE {
+    | AVG LBRACE group_by_expression_list RBRACE {
       $$ = create_aggregate_expression("avg", $3, sql_string, &@$);
     }
-    | MIN LBRACE expression RBRACE {
+    | MIN LBRACE group_by_expression_list RBRACE {
       $$ = create_aggregate_expression("min", $3, sql_string, &@$);
     }
-    | MAX LBRACE expression RBRACE {
+    | MAX LBRACE group_by_expression_list RBRACE {
       $$ = create_aggregate_expression("max", $3, sql_string, &@$);
-    }
-    | COUNT LBRACE expression_list RBRACE {
-      $$ = create_aggregate_expression("count", nullptr, sql_string, &@$);
-    }
-    | SUM LBRACE expression_list RBRACE {
-      $$ = create_aggregate_expression("sum", nullptr, sql_string, &@$);
-    }
-    | AVG LBRACE expression_list RBRACE {
-      $$ = create_aggregate_expression("avg", nullptr, sql_string, &@$);
-    }
-    | MIN LBRACE expression_list RBRACE {
-      $$ = create_aggregate_expression("min", nullptr, sql_string, &@$);
-    }
-    | MAX LBRACE expression_list RBRACE {
-      $$ = create_aggregate_expression("max", nullptr, sql_string, &@$);
     }
     | '*' {
       $$ = new StarExpr();
