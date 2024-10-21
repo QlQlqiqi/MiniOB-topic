@@ -1,15 +1,14 @@
 {
-    // 使用 IntelliSense 了解相关属性。 
-    // 悬停以查看现有属性的描述。
-    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(gdb) 启动",
             "type": "cppdbg",
             "request": "launch",
             "name": "Debug",
-            "program": "${workspaceFolder}/${defaultBuildTask}/bin/observer",
+            "program": "${workspaceFolder}/build_debug/bin/observer",
             "args": ["-f", "${workspaceFolder}/etc/observer.ini", "-P", "cli"],
             "cwd": "${workspaceFolder}/${defaultBuildTask}/",
             "internalConsoleOptions": "openOnSessionStart",
@@ -30,14 +29,6 @@
                 "MIMode": "gdb",
                 "externalConsole":true
             }
-        },
-        {
-            "type": "cppdbg",
-            "request": "launch",
-            "name": "LLDB",
-            "program": "${workspaceFolder}/${defaultBuildTask}/bin/observer",
-            "args": ["-f", "${workspaceFolder}/etc/observer.ini", "-P", "cli"],
-            "cwd": "${workspaceFolder}/${defaultBuildTask}/"
         }
     ]
 }
