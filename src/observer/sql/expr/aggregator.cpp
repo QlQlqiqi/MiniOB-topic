@@ -63,6 +63,7 @@ RC AvgAggregator::accumulate(const Value& value_)
 RC AvgAggregator::evaluate(Value &result)
 {
   Value sum;
+  Value float_sum;
   Value cnt;
   if (RC rc = CountAggregator::evaluate(cnt); OB_FAIL(rc))
   {
@@ -80,7 +81,7 @@ RC AvgAggregator::evaluate(Value &result)
   
   if (sum.attr_type() != AttrType::FLOATS)
   {
-    if (RC rc = Value::cast_to(sum, AttrType::FLOATS, sum); OB_FAIL(rc))
+    if (RC rc = Value::cast_to(sum, AttrType::FLOATS, float_sum); OB_FAIL(rc))
     {
       LOG_WARN("failed to cast to float from a value(%s) with attr_type=%d", value_.to_string(), value_.attr_type());
       return rc;

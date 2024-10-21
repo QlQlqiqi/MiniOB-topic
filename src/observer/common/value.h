@@ -19,6 +19,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/type/attr_type.h"
 #include "common/type/data_type.h"
 #include "common/time/datetime.h"
+#include "cassert"
 
 /**
  * @brief 属性的值
@@ -90,6 +91,7 @@ public:
 
   static RC cast_to(const Value &value, AttrType to_type, Value &result)
   {
+    assert(&value != &result); // , "We do not support casting a value locally."
     return DataType::type_instance(value.attr_type())->cast_to(value, to_type, result);
   }
 
