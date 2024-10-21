@@ -157,32 +157,18 @@ RC Stmt::bind_filter_stmt(Db *db, const std::vector<std::string> &relations, Fil
   vector<unique_ptr<Expression>> bound_expressions;
   ExpressionBinder               expression_binder(binder_context);
 
-  // bind exprs in filter statement
-  for (auto &unit : filter_stmt->filter_units()) {
+  // 这里选择 bind expr
+  auto &expr = filter_stmt->get_expr();
+  if (expr) {
     vector<unique_ptr<Expression>> filter_expressions;
-    if (unit->left().expr_) {
-      auto l  = unit->left().expr_->Clone();
-      RC   rc = expression_binder.bind_expression(l, filter_expressions);
-      if (OB_FAIL(rc)) {
-        LOG_INFO("bind expression failed. rc=%s", strrc(rc));
-        return rc;
-      }
-      ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
-      unit->set_left(std::move(filter_expressions[0]));
-      filter_expressions.clear();
+    auto                           l  = expr->Clone();
+    RC                             rc = expression_binder.bind_expression(l, filter_expressions);
+    if (OB_FAIL(rc)) {
+      LOG_INFO("bind expression failed. rc=%s", strrc(rc));
+      return rc;
     }
-
-    if (unit->right().expr_) {
-      auto r  = unit->right().expr_->Clone();
-      RC   rc = expression_binder.bind_expression(r, filter_expressions);
-      if (OB_FAIL(rc)) {
-        LOG_INFO("bind expression failed. rc=%s", strrc(rc));
-        return rc;
-      }
-      ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
-      unit->set_right(std::move(filter_expressions[0]));
-      filter_expressions.clear();
-    }
+    ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
+    filter_stmt->set_expr(std::move(filter_expressions[0]));
   }
 
   return RC::SUCCESS;

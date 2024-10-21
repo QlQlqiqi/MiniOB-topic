@@ -19,13 +19,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 
-FilterStmt::~FilterStmt()
-{
-  for (FilterUnit *unit : filter_units_) {
-    delete unit;
-  }
-  filter_units_.clear();
-}
+FilterStmt::~FilterStmt() = default;
 
 RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
     const Expression *conditions, FilterStmt *&stmt)
@@ -34,18 +28,11 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
   stmt  = nullptr;
 
   FilterStmt *tmp_stmt    = new FilterStmt();
-  FilterUnit *filter_unit = nullptr;
+  // FilterUnit *filter_unit = nullptr;
 
   if (conditions) {
-    rc = create_filter_unit(db, default_table, tables, conditions, filter_unit);
-    if (rc != RC::SUCCESS) {
-      delete tmp_stmt;
-      LOG_WARN("failed to create filter unit.");
-      return rc;
-    }
-    // TODO: 先用 expr
+    // 使用 expr
     tmp_stmt->set_expr(conditions->Clone());
-    tmp_stmt->filter_units_.push_back(filter_unit);
   }
 
   stmt = tmp_stmt;
@@ -99,7 +86,7 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
     return RC::INVALID_ARGUMENT;
   }
 
-  // TODO: 需要先检查 table 中是否有 condition 出现的 field
+  // TODO(qiqi): 需要先检查 table 中是否有 condition 出现的 field
   //   rc                     = get_table_and_field(db, default_table, tables, condition.left_attr, table, field);
   // if (rc != RC::SUCCESS) {
   //   LOG_WARN("cannot find attr");

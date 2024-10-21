@@ -63,7 +63,7 @@ public:
   virtual ~FilterStmt();
 
 public:
-  const std::vector<FilterUnit *> &filter_units() const { return filter_units_; }
+  // const std::vector<FilterUnit *> &filter_units() const { return filter_units_; }
 
   void set_expr(std::unique_ptr<Expression> &&expr) { expr_ = std::move(expr); }
   const std::unique_ptr<Expression> &get_expr() const { return expr_; }
@@ -76,6 +76,6 @@ public:
       const Expression *condition, FilterUnit *&filter_unit);
 
 private:
-  std::vector<FilterUnit *> filter_units_;  // 默认当前都是AND关系
+  // std::vector<FilterUnit *> filter_units_;  // 默认当前都是AND关系
   std::unique_ptr<Expression> expr_ = nullptr;
 };

@@ -167,6 +167,14 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
     return rc;
   }
 
+  // TODO(qiqi): 需要判断 left 和 value 如果不能比较应该如何处理，
+  // 比如：1 < null、1 < bool，默认是为 false，这里目前只是对 null 进行
+  // 特判，事实上需要处理所有不能比较的类型，让结果为 false
+  if(left.is_null() || right.is_null()) {
+    result = false;
+    return rc;
+  }
+
   if(comp_ != LIKE_OP && comp_ != NOT_LIKE_OP){
     cmp_result = left.compare(right);
   }

@@ -301,7 +301,7 @@ public:
 
   virtual std::unique_ptr<Expression> Clone() const override
   {
-    return std::make_unique<ComparisonExpr>(comp_, left_->Clone(), left_->Clone());
+    return std::make_unique<ComparisonExpr>(comp_, left_->Clone(), right_->Clone());
   }
   ExprType type() const override { return ExprType::COMPARISON; }
   RC       get_value(const Tuple &tuple, Value &value) const override;
