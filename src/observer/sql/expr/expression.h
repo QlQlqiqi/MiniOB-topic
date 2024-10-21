@@ -295,6 +295,7 @@ private:
 class ComparisonExpr : public Expression
 {
 public:
+  ComparisonExpr(CompOp comp, Expression* left, Expression* right);
   ComparisonExpr(CompOp comp, std::unique_ptr<Expression> left, std::unique_ptr<Expression> right);
   virtual ~ComparisonExpr();
 
@@ -315,6 +316,8 @@ public:
 
   std::unique_ptr<Expression> &left() { return left_; }
   std::unique_ptr<Expression> &right() { return right_; }
+  const std::unique_ptr<Expression> &left_con() const { return left_; }
+  const std::unique_ptr<Expression> &right_con() const { return right_; }
 
   /**
    * 尝试在没有tuple的情况下获取当前表达式的值
@@ -353,6 +356,7 @@ public:
   };
 
 public:
+  ConjunctionExpr(Type type, Expression* left, Expression* right);
   ConjunctionExpr(Type type, std::vector<std::unique_ptr<Expression>> &children);
   virtual ~ConjunctionExpr() = default;
 

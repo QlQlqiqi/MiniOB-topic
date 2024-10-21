@@ -1,3 +1,4 @@
+#include "common/log/log.h"
 #include "common/value.h"
 #include "common/type/null_type.h"
 
@@ -14,5 +15,6 @@ int NullType::cast_cost(AttrType type)
 
 RC NullType::cast_to(const Value &val, AttrType type, Value &result) const
 {
-  return RC::UNSUPPORTED;
+  result.set_null();
+  return RC::SUCCESS;
 }

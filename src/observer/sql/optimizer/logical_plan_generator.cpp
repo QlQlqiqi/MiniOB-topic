@@ -157,6 +157,16 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
 
 RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<LogicalOperator> &logical_operator)
 {
+  // TODO: 原来这里会把 value 的 type 统一，这块改成不统一，
+  // 并且改成使用 expr
+  auto &expr = filter_stmt->get_expr();
+  unique_ptr<PredicateLogicalOperator> pre_oper;
+  if (expr) {
+    pre_oper = std::make_unique<PredicateLogicalOperator>(expr->Clone());
+  }
+  logical_operator = std::move(pre_oper);
+  return RC::SUCCESS;
+
   RC                                  rc = RC::SUCCESS;
   std::vector<unique_ptr<Expression>> cmp_exprs;
   const std::vector<FilterUnit *>    &filter_units = filter_stmt->filter_units();
@@ -168,6 +178,7 @@ RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<Logical
     unique_ptr<Expression> right = filter_obj_right.expr_->Clone();
 
     if (left->value_type() != right->value_type()) {
+      // 如果有一边是 null，那么不应该经过 CastExpr
       auto left_to_right_cost = implicit_cast_cost(left->value_type(), right->value_type());
       auto right_to_left_cost = implicit_cast_cost(right->value_type(), left->value_type());
       if (left_to_right_cost <= right_to_left_cost && left_to_right_cost != INT32_MAX) {
@@ -245,7 +256,7 @@ RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<Logical
   {
     return RC::SCHEMA_FIELD_NOT_EXIST;
   }
-  for (size_t i = 0; i < update_stmt->field_amount(); ++i) {
+  for (int i = 0; i < update_stmt->field_amount(); ++i) {
     fields.emplace_back(update_stmt->field_metas()[i]);
   }
 

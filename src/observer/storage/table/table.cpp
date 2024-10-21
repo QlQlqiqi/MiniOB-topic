@@ -337,6 +337,16 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
 
 RC Table::set_value_to_record(char *record_data, const Value &value, const FieldMeta *field)
 {
+  bool is_null = false;
+  // 如果这个数据是 null，那么 field 必须为 nullable。
+  if (value.attr_type() == AttrType::NULLS) {
+    if(!field->nullable()) {
+      LOG_WARN("failed to insert null record in not null field, field name:%s", field->name());
+      return RC::UNSUPPORTED;
+    }
+    is_null = true;
+  }
+
   size_t       copy_len = field->len();
   const size_t data_len = value.length();
   if (field->type() == AttrType::CHARS) {
@@ -344,7 +354,11 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
       copy_len = data_len + 1;
     }
   }
-  memcpy(record_data + field->offset(), value.data(), copy_len);
+  // 如果可以为 null，必须先写 sizeof(field->nullable()) 个字节，代表是否为 null
+  memcpy(record_data + field->offset(), &is_null, sizeof(is_null));
+  if (!is_null) {
+    memcpy(record_data + field->offset() + field->nullable(), value.data(), copy_len - field->nullable());
+  }
   return RC::SUCCESS;
 }
 

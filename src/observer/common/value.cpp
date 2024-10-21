@@ -117,6 +117,11 @@ void Value::set_null()
   attr_type_ = AttrType::NULLS;
 }
 
+bool Value::is_null() const
+{
+  return attr_type_ == AttrType::NULLS;
+}
+
 void Value::set_data(char *data, int length)
 {
   switch (attr_type_) {

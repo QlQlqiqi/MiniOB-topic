@@ -146,6 +146,10 @@ RC CastExpr::try_get_value(Value &result) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ComparisonExpr::ComparisonExpr(CompOp comp, Expression* left, Expression* right)
+    : comp_(comp), left_(left), right_(right)
+{}
+
 ComparisonExpr::ComparisonExpr(CompOp comp, unique_ptr<Expression> left, unique_ptr<Expression> right)
     : comp_(comp), left_(std::move(left)), right_(std::move(right))
 {}
@@ -156,6 +160,13 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
 {
   RC  rc         = RC::SUCCESS;
   int cmp_result;
+
+  if (comp_ == IS_NULL || comp_ == IS_NOT_NULL) {
+    ASSERT(right.is_null(), "right value must be null");
+    result = comp_ == IS_NULL ? left.is_null() : !left.is_null();
+    return rc;
+  }
+
   if(comp_ != LIKE_OP && comp_ != NOT_LIKE_OP){
     cmp_result = left.compare(right);
   }
@@ -295,6 +306,13 @@ RC ComparisonExpr::compare_column(const Column &left, const Column &right, std::
 ConjunctionExpr::ConjunctionExpr(Type type, vector<unique_ptr<Expression>> &children)
     : conjunction_type_(type), children_(std::move(children))
 {}
+
+ConjunctionExpr::ConjunctionExpr(Type type, Expression* left, Expression* right)
+    : conjunction_type_(type)
+{
+  children_.emplace_back(left);
+  children_.emplace_back(right);
+}
 
 RC ConjunctionExpr::get_value(const Tuple &tuple, Value &value) const
 {

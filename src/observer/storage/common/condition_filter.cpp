@@ -55,6 +55,9 @@ RC DefaultConditionFilter::init(const ConDesc &left, const ConDesc &right, AttrT
   return RC::SUCCESS;
 }
 
+  // 这里未实现，因为我看代码似乎用不到这里，先注释了
+  // 注释开始
+  /*
 RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
 {
   // const TableMeta &table_meta = table.table_meta();
@@ -64,9 +67,6 @@ RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
   AttrType type_left  = AttrType::UNDEFINED;
   AttrType type_right = AttrType::UNDEFINED;
 
-  // 这里未实现，因为我看代码似乎用不到这里，先注释了
-  // 注释开始
-  /*
   if (1 == condition.left_is_attr) {
     left.is_attr                = true;
     const FieldMeta *field_left = table_meta.field(condition.left_attr.attribute_name.c_str());
@@ -105,8 +105,6 @@ RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
     right.attr_length = 0;
     right.attr_offset = 0;
   }
-  */
-  // 注释结束
 
   // 校验和转换
   //  if (!field_type_compare_compatible_table[type_left][type_right]) {
@@ -121,6 +119,8 @@ RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
 
   return init(left, right, type_left, condition.comp);
 }
+  */
+  // 注释结束
 
 bool DefaultConditionFilter::filter(const Record &rec) const
 {
@@ -178,6 +178,10 @@ RC CompositeConditionFilter::init(const ConditionFilter *filters[], int filter_n
   return init(filters, filter_num, false);
 }
 
+
+  // 这里未实现，因为我看代码似乎用不到这里，先注释了
+  // 注释开始
+  /*
 RC CompositeConditionFilter::init(Table &table, const ConditionSqlNode *conditions, int condition_num)
 {
   if (condition_num == 0) {
@@ -206,6 +210,8 @@ RC CompositeConditionFilter::init(Table &table, const ConditionSqlNode *conditio
   }
   return init((const ConditionFilter **)condition_filters, condition_num, true);
 }
+  */
+  // 注释结束
 
 bool CompositeConditionFilter::filter(const Record &rec) const
 {

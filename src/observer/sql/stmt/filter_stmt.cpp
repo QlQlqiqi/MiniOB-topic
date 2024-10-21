@@ -28,21 +28,23 @@ FilterStmt::~FilterStmt()
 }
 
 RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-    const ConditionSqlNode *conditions, int condition_num, FilterStmt *&stmt)
+    const Expression *conditions, FilterStmt *&stmt)
 {
   RC rc = RC::SUCCESS;
   stmt  = nullptr;
 
-  FilterStmt *tmp_stmt = new FilterStmt();
-  for (int i = 0; i < condition_num; i++) {
-    FilterUnit *filter_unit = nullptr;
+  FilterStmt *tmp_stmt    = new FilterStmt();
+  FilterUnit *filter_unit = nullptr;
 
-    rc = create_filter_unit(db, default_table, tables, conditions[i], filter_unit);
+  if (conditions) {
+    rc = create_filter_unit(db, default_table, tables, conditions, filter_unit);
     if (rc != RC::SUCCESS) {
       delete tmp_stmt;
-      LOG_WARN("failed to create filter unit. condition index=%d", i);
+      LOG_WARN("failed to create filter unit.");
       return rc;
     }
+    // TODO: 先用 expr
+    tmp_stmt->set_expr(conditions->Clone());
     tmp_stmt->filter_units_.push_back(filter_unit);
   }
 
@@ -79,17 +81,25 @@ RC get_table_and_field(Db *db, Table *default_table, std::unordered_map<std::str
 }
 
 RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-    const ConditionSqlNode &condition, FilterUnit *&filter_unit)
+    const Expression *condition, FilterUnit *&filter_unit)
 {
   RC rc = RC::SUCCESS;
 
-  CompOp comp = condition.comp;
+  // 这里 condition 应该是 ComparisonExpr
+  if(condition->type() != ExprType::COMPARISON) {
+    LOG_WARN("condition should be ComparisonExpr, but now is: ", condition->type());
+    return RC::UNSUPPORTED;
+  }
+
+  auto expr = static_cast<const ComparisonExpr*>(condition);
+
+  CompOp comp = expr->comp();
   if (comp < EQUAL_TO || comp >= NO_OP) {
     LOG_WARN("invalid compare operator : %d", comp);
     return RC::INVALID_ARGUMENT;
   }
 
-  // 需要先检查 table 中是否有 condition 出现的 field
+  // TODO: 需要先检查 table 中是否有 condition 出现的 field
   //   rc                     = get_table_and_field(db, default_table, tables, condition.left_attr, table, field);
   // if (rc != RC::SUCCESS) {
   //   LOG_WARN("cannot find attr");
@@ -97,9 +107,9 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_m
   // }
 
   filter_unit = new FilterUnit;
-  filter_unit->set_comp(condition.comp);
-  filter_unit->set_left(condition.left->Clone());
-  filter_unit->set_right(condition.right->Clone());
+  filter_unit->set_comp(comp);
+  filter_unit->set_left(expr->left_con()->Clone());
+  filter_unit->set_right(expr->right_con()->Clone());
 
   // 检查两个类型是否能够比较
   return rc;

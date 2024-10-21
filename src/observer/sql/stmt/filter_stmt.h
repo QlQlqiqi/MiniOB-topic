@@ -65,13 +65,17 @@ public:
 public:
   const std::vector<FilterUnit *> &filter_units() const { return filter_units_; }
 
+  void set_expr(std::unique_ptr<Expression> &&expr) { expr_ = std::move(expr); }
+  const std::unique_ptr<Expression> &get_expr() const { return expr_; }
+
 public:
   static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-      const ConditionSqlNode *conditions, int condition_num, FilterStmt *&stmt);
+      const Expression *conditions, FilterStmt *&stmt);
 
   static RC create_filter_unit(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-      const ConditionSqlNode &condition, FilterUnit *&filter_unit);
+      const Expression *condition, FilterUnit *&filter_unit);
 
 private:
   std::vector<FilterUnit *> filter_units_;  // 默认当前都是AND关系
+  std::unique_ptr<Expression> expr_ = nullptr;
 };

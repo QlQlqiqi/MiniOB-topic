@@ -34,6 +34,26 @@ int CharType::cast_cost(AttrType type)
   return INT32_MAX;
 }
 
+RC CharType::cast_to(const Value &val, AttrType type, Value &result) const
+{
+  result.set_type(type);
+  switch (type) {
+    case AttrType::CHARS: {
+      result = val;
+      break;
+    }
+    case AttrType::NULLS: {
+      result.set_null();
+      break;
+    }
+    default: {
+      LOG_WARN("failed to cast to: from %s to %s", attr_type_to_string(attr_type_), attr_type_to_string(type));
+      return RC::UNSUPPORTED;
+    }
+  }
+  return RC::SUCCESS;
+}
+
 RC CharType::to_string(const Value &val, string &result) const
 {
   stringstream ss;
