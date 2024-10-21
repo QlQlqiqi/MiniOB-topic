@@ -118,6 +118,11 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         GE
         NE
         LIKE
+        COUNT
+        SUM
+        AVG
+        MAX
+        MIN
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -125,6 +130,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
   ConditionSqlNode *                         condition;
   Value *                                    value;
   enum CompOp                                comp;
+  enum AggregationOp                         aggr;
   RelAttrSqlNode *                           rel_attr;
   std::vector<AttrInfoSqlNode> *             attr_infos;
   AttrInfoSqlNode *                          attr_info;
@@ -154,6 +160,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <number>              number
 %type <string>              relation
 %type <comp>                comp_op
+%type <aggr>                aggregation_op
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
@@ -521,6 +528,13 @@ calc_stmt:
       delete $2;
     }
     ;
+    
+aggregation_op:
+      COUNT { $$ = AGGR_COUNT; }
+    | SUM { $$ = AGGR_SUM; }
+    | AVG { $$ = AGGR_AVG; }
+    | MAX { $$ = AGGR_MAX; }
+    | MIN { $$ = AGGR_MIN; }
 
 expression_list:
     expression
@@ -569,10 +583,12 @@ expression:
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
+    | aggregation_op LBRACE expression RBRACE {
+        $$ = create_aggregate_expression($1, $3, sql_string, &@$)
+    }
     | '*' {
       $$ = new StarExpr();
     }
-    // your code here
     ;
 
 rel_attr:
@@ -700,11 +716,14 @@ comp_op:
     | NOT LIKE { $$ = NOT_LIKE_OP; }
     ;
 
-// your code here
 group_by:
     /* empty */
     {
       $$ = nullptr;
+    }
+    | GROUP BY expression_list
+    {
+      $$ = $3;
     }
     ;
 load_data_stmt:
