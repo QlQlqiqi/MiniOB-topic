@@ -96,6 +96,7 @@ RC LogicalPlanGenerator::create_plan(CalcStmt *calc_stmt, std::unique_ptr<Logica
 
 RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<LogicalOperator> &logical_operator)
 {
+  RC rc = RC::SUCCESS;
   unique_ptr<LogicalOperator> *last_oper = nullptr;
 
   unique_ptr<LogicalOperator> table_oper(nullptr);
@@ -108,16 +109,30 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
     if (table_oper == nullptr) {
       table_oper = std::move(table_get_oper);
     } else {
+      unique_ptr<LogicalOperator> predicate_oper;
       JoinLogicalOperator *join_oper = new JoinLogicalOperator;
+      if(select_stmt->join_conditions().size() != 0 && select_stmt->join_conditions().count(table) != 0){
+        FilterStmt *filter_stmt = select_stmt->join_conditions()[table].get();
+        rc = create_plan(filter_stmt, predicate_oper);
+        if (rc != RC::SUCCESS) {
+          return rc;
+        }
+      }
       join_oper->add_child(std::move(table_oper));
-      join_oper->add_child(std::move(table_get_oper));
-      table_oper = unique_ptr<LogicalOperator>(join_oper);
+      if (predicate_oper) {
+        join_oper->add_child(std::move(table_get_oper));
+        table_oper = unique_ptr<LogicalOperator>(join_oper);
+        predicate_oper->add_child(std::move(join_oper));
+
+      } else {
+        join_oper->add_child(std::move(table_get_oper));
+      }
     }
   }
 
   unique_ptr<LogicalOperator> predicate_oper;
 
-  RC rc = create_plan(select_stmt->filter_stmt(), predicate_oper);
+  rc = create_plan(select_stmt->filter_stmt(), predicate_oper);
   if (OB_FAIL(rc)) {
     LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
     return rc;

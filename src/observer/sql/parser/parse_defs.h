@@ -77,6 +77,33 @@ struct ConditionSqlNode
   Value          right_value;    ///< right-hand side value if right_is_attr = FALSE
 };
 
+
+/**
+ * @brief 描述一个inner join on 单元
+ * @ingroup SQLParser
+ */
+struct InnerJoinUnit
+{
+  std::string                   relation;  ///< relation to join
+  std::vector<ConditionSqlNode> conditions;  ///< join conditions
+
+  InnerJoinUnit() = default;
+  InnerJoinUnit(std::string&& relation) : relation(std::move(relation)) {}
+};
+
+/**
+ * @brief 描述一个inner join on语句
+ * @ingroup SQLParser
+ * @details inner join on 支持连续定义
+ * 一个innner join on 语句由两部分组成，分别是innner join, on
+ * on部分表示连接的条件，innner join部分表示要连接的表。
+ */
+struct InnerJoinSqlNode
+{
+  std::vector<std::string>                   relations;   ///< relations to join
+  std::vector<std::vector<ConditionSqlNode>> conditions;  ///< join conditions
+};
+
 /**
  * @brief 描述一个select语句
  * @ingroup SQLParser
@@ -94,6 +121,7 @@ struct SelectSqlNode
   std::vector<std::string>                 relations;    ///< 查询的表
   std::vector<ConditionSqlNode>            conditions;   ///< 查询条件，使用AND串联起来多个条件
   std::vector<std::unique_ptr<Expression>> group_by;     ///< group by clause
+  std::unique_ptr<InnerJoinSqlNode>        inner_join;   ///< inner join clause
 };
 
 /**
