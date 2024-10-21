@@ -24,14 +24,51 @@ public:
 
   virtual RC accumulate(const Value &value) = 0;
   virtual RC evaluate(Value &result)        = 0;
+};
+
+class CountAggregator : virtual public Aggregator
+{
+public:
+  RC accumulate(const Value &value) override;
+  RC evaluate(Value &result) override;
+protected:
+  size_t cnt_ = 0;
+};
+
+class ImmediateAggregator : virtual public Aggregator
+{
+public:
+  RC evaluate(Value &result) override
+  {
+    result = value_;
+    return RC::SUCCESS;
+  }
 
 protected:
   Value value_;
 };
 
-class SumAggregator : public Aggregator
+class SumAggregator : public ImmediateAggregator
+{
+public:
+  RC accumulate(const Value &value) override;
+};
+
+class AvgAggregator : public SumAggregator, public CountAggregator
 {
 public:
   RC accumulate(const Value &value) override;
   RC evaluate(Value &result) override;
+};
+
+class MinAggregator : public ImmediateAggregator
+{
+public:
+  RC accumulate(const Value &value) override;
+};
+
+class MaxAggregator : public ImmediateAggregator
+{
+public:
+  RC accumulate(const Value &value) override;
 };

@@ -43,12 +43,12 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
   return expr;
 }
 
-UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
-                                           Expression *child,
-                                           const char *sql_string,
-                                           YYLTYPE *llocp)
+UnboundAggregateExpr *create_aggregate_expression(const char* type,
+                                                  Expression *child,
+                                                  const char *sql_string,
+                                                  YYLTYPE *llocp)
 {
-  UnboundAggregateExpr *expr = new UnboundAggregateExpr(aggregate_name, child);
+  UnboundAggregateExpr *expr = new UnboundAggregateExpr(type, child);
   expr->set_name(token_name(sql_string, llocp));
   return expr;
 }
@@ -120,6 +120,11 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         GE
         NE
         LIKE
+        COUNT
+        SUM
+        AVG
+        MAX
+        MIN
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -164,6 +169,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <string>              storage_format
 %type <relation_list>       rel_list
 %type <expression>          expression
+%type <expression>          group_by_expression_list
 %type <expression_list>     expression_list
 %type <expression_list>     group_by
 %type <sql_node>            calc_stmt
@@ -566,6 +572,24 @@ expression_list:
       $$->emplace($$->begin(), $1);
     }
     ;
+
+group_by_expression_list:
+  /* empty */
+  {
+    $$ = nullptr;
+  }
+  | expression COMMA expression_list
+  {
+    $$ = nullptr;
+    delete $1;
+    delete $3;
+  }
+  | expression
+  {
+    $$ = $1;
+  }
+  ;
+
 expression:
     expression '+' expression {
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::ADD, $1, $3, sql_string, &@$);
@@ -597,10 +621,24 @@ expression:
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
+    | COUNT LBRACE group_by_expression_list RBRACE {
+      $$ = create_aggregate_expression("count", $3, sql_string, &@$);
+    }
+    | SUM LBRACE group_by_expression_list RBRACE {
+      $$ = create_aggregate_expression("sum", $3, sql_string, &@$);
+    }
+    | AVG LBRACE group_by_expression_list RBRACE {
+      $$ = create_aggregate_expression("avg", $3, sql_string, &@$);
+    }
+    | MIN LBRACE group_by_expression_list RBRACE {
+      $$ = create_aggregate_expression("min", $3, sql_string, &@$);
+    }
+    | MAX LBRACE group_by_expression_list RBRACE {
+      $$ = create_aggregate_expression("max", $3, sql_string, &@$);
+    }
     | '*' {
       $$ = new StarExpr();
     }
-    // your code here
     ;
 
 rel_attr:
@@ -684,11 +722,14 @@ comp_op:
     | NOT LIKE { $$ = NOT_LIKE_OP; }
     ;
 
-// your code here
 group_by:
     /* empty */
     {
       $$ = nullptr;
+    }
+    | GROUP BY expression_list
+    {
+      $$ = $3;
     }
     ;
 load_data_stmt:
