@@ -87,10 +87,13 @@ RC AvgAggregator::evaluate(Value &result)
       return rc;
     }
   }
-
+  else
+  {
+    float_sum = sum;
+  }
 
   Value::divide(float_sum, cnt, float_sum);
-  result = sum;
+  result = float_sum;
   return RC::SUCCESS;
 }
 
