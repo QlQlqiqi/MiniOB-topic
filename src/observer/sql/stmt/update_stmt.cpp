@@ -58,8 +58,11 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
   for (auto &field_meta : *field_metas) {
     if (strcmp(field_meta.name(), update.attribute_name.c_str()) == 0) {
       if (auto ftype = field_meta.type(), vtype = update.value.attr_type(); ftype != vtype) {
-        LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(ftype), static_cast<int>(vtype));
-        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        if (!(vtype == AttrType::NULLS && field_meta.nullable()))
+        {
+          LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(ftype), static_cast<int>(vtype));
+          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        }
       }
       // Only single update supported for now.
       to_be_updated = &field_meta;
