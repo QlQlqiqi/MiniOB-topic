@@ -52,6 +52,11 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     records_.emplace_back(std::move(record));
   }
 
+  if (rc != RC::RECORD_EOF)
+  {
+    return rc;
+  }
+
   child->close();
 
   for (Record &record : records_) {

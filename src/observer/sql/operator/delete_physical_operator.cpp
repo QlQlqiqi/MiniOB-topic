@@ -45,6 +45,11 @@ RC DeletePhysicalOperator::open(Trx *trx)
     records_.emplace_back(std::move(record));
   }
 
+  if (rc != RC::RECORD_EOF)
+  {
+    return rc;
+  }
+
   child->close();
 
   // 先收集记录再删除
