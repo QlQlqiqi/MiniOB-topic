@@ -146,9 +146,9 @@ bool DefaultConditionFilter::filter(const Record &rec) const
   switch (comp_op_) {
     case EQUAL_TO: return 0 == cmp_result;
     case LESS_EQUAL: return cmp_result <= 0;
-    case NOT_EQUAL: return cmp_result != 0;
+    case NOT_EQUAL: return cmp_result != 0 && cmp_result != INT_MAX;
     case LESS_THAN: return cmp_result < 0;
-    case GREAT_EQUAL: return cmp_result >= 0;
+    case GREAT_EQUAL: return cmp_result >= 0 && cmp_result != INT_MAX;
     case GREAT_THAN: return cmp_result > 0;
 
     default: break;

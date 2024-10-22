@@ -30,28 +30,6 @@ struct FilterObj
   std::unique_ptr<Expression> expr_;
 };
 
-class FilterUnit
-{
-public:
-  FilterUnit() = default;
-  ~FilterUnit() {}
-
-  void set_comp(CompOp comp) { comp_ = comp; }
-
-  CompOp comp() const { return comp_; }
-
-  void set_left(std::unique_ptr<Expression> &&expr) { left_ = FilterObj(std::move(expr)); }
-  void set_right(std::unique_ptr<Expression> &&expr) { right_ = FilterObj(std::move(expr)); }
-
-  const FilterObj &left() const { return left_; }
-  const FilterObj &right() const { return right_; }
-
-private:
-  CompOp    comp_ = NO_OP;
-  FilterObj left_;
-  FilterObj right_;
-};
-
 /**
  * @brief Filter/谓词/过滤语句
  * @ingroup Statement
@@ -72,8 +50,6 @@ public:
   static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
       const Expression *conditions, FilterStmt *&stmt);
 
-  static RC create_filter_unit(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-      const Expression *condition, FilterUnit *&filter_unit);
 
 private:
   // std::vector<FilterUnit *> filter_units_;  // 默认当前都是AND关系

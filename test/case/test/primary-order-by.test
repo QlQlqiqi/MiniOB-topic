@@ -40,6 +40,4 @@ select * from t_order_by where id=3 and name>='a' order by score desc, name;
 -- echo 6. multi-table order by
 select * from t_order_by,t_order_by_2 order by t_order_by.id,t_order_by.score,t_order_by.name,t_order_by_2.id,t_order_by_2.age;
 select * from t_order_by,t_order_by_3 order by t_order_by.id,t_order_by.score,t_order_by.name,t_order_by_3.id;
-
-
 select * from t_order_by, t_order_by_2 where t_order_by.id=t_order_by_2.id order by t_order_by.score desc, t_order_by_2.age asc, t_order_by.id asc, t_order_by.name;

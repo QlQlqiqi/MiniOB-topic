@@ -188,16 +188,16 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
       result = (cmp_result <= 0);
     } break;
     case NOT_EQUAL: {
-      result = (cmp_result != 0);
+      result = (cmp_result != 0 && cmp_result != INT_MAX);
     } break;
     case LESS_THAN: {
       result = (cmp_result < 0);
     } break;
     case GREAT_EQUAL: {
-      result = (cmp_result >= 0);
+      result = (cmp_result >= 0) && cmp_result != INT_MAX);
     } break;
     case GREAT_THAN: {
-      result = (cmp_result > 0);
+      result = (cmp_result > 0 && cmp_result != INT_MAX);
     } break;
     case LIKE_OP:{
       result = str_like(left, right); 

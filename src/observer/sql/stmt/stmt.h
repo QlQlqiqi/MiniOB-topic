@@ -89,7 +89,6 @@ public:
   virtual StmtType type() const = 0;
 
 public:
-  static RC bind_filter_stmt(Db *db, const std::vector<std::string> &relations, FilterStmt *filter_stmt);
   static RC create_stmt(Db *db, ParsedSqlNode &sql_node, Stmt *&stmt);
 
 private:
