@@ -496,9 +496,7 @@ delete_stmt:    /*  delete 语句的语法解析树*/
     {
       $$ = new ParsedSqlNode(SCF_DELETE);
       $$->deletion.relation_name = $3;
-      if ($4 != nullptr) {
-        $$->deletion.conditions = $4;
-      }
+      $$->deletion.conditions = $4;
       free($3);
     }
     ;
@@ -509,9 +507,7 @@ update_stmt:      /*  update 语句的语法解析树*/
       $$->update.relation_name = $2;
       $$->update.attribute_name = $4;
       $$->update.value = *$6;
-      if ($7 != nullptr) {
-        $$->update.conditions = $7;
-      }
+      $$->update.conditions = $7;
       free($2);
       free($4);
     }
@@ -530,9 +526,7 @@ select_stmt:        /*  select 语句的语法解析树*/
         delete $4;
       }
 
-      if ($5 != nullptr) {
-        $$->selection.conditions = $5;
-      }
+      $$->selection.conditions = $5;
 
       if ($6 != nullptr) {
         $$->selection.group_by.swap(*$6);
