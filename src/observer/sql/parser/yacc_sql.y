@@ -634,16 +634,16 @@ inner_join_list:
     {
       $$ = nullptr;
     }
-    | inner_join_rel inner_join_list 
+    | inner_join_list inner_join_rel 
     {
-      if($2 == nullptr){
+      if($1 == nullptr){
         $$ = new InnerJoinSqlNode();
       }else{
-        $$ = $2;
+        $$ = $1;
       }
-      $$->relations.emplace_back($1->relation);
-      $$->conditions.emplace_back(std::move($1->conditions));
-      delete $1;
+      $$->relations.emplace_back($2->relation);
+      $$->conditions.emplace_back(std::move($2->conditions));
+      delete $2;
     }
     ;
 inner_join_rel:

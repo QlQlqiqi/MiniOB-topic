@@ -73,18 +73,6 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     table_map.insert({table_name, table});
   }
 
-  // collect query fields in `select` statement
-  vector<unique_ptr<Expression>> bound_expressions;
-  ExpressionBinder expression_binder(binder_context);
-  
-  for (unique_ptr<Expression> &expression : select_sql.expressions) {
-    RC rc = expression_binder.bind_expression(expression, bound_expressions);
-    if (OB_FAIL(rc)) {
-      LOG_INFO("bind expression failed. rc=%s", strrc(rc));
-      return rc;
-    }
-  }
-
   // inner join statement
   std::unordered_map<Table* , std::unique_ptr<FilterStmt>> join_conditions;
   if(select_sql.inner_join != nullptr){
@@ -97,6 +85,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
       if((rc = check_and_collect_table(inner_join_relations[i], &table)) != RC::SUCCESS){
         return rc;
       }
+
       binder_context.add_table(table);
       tables.push_back(table);
       table_map.insert({inner_join_relations[i], table});
@@ -106,7 +95,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
         table,
         &table_map,
         inner_join_conditions[i].data(),
-        static_cast<int>(inner_join_conditions.size()),
+        static_cast<int>(inner_join_conditions[i].size()),
         filter_stmt);
       if (rc != RC::SUCCESS) {
         LOG_WARN("cannot construct filter stmt");
@@ -114,8 +103,18 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
       }
       join_conditions.insert({table, std::unique_ptr<FilterStmt>(filter_stmt)});
     }
+  }
 
-
+  // collect query fields in `select` statement
+  vector<unique_ptr<Expression>> bound_expressions;
+  ExpressionBinder expression_binder(binder_context);
+  
+  for (unique_ptr<Expression> &expression : select_sql.expressions) {
+    RC rc = expression_binder.bind_expression(expression, bound_expressions);
+    if (OB_FAIL(rc)) {
+      LOG_INFO("bind expression failed. rc=%s", strrc(rc));
+      return rc;
+    }
   }
 
   vector<unique_ptr<Expression>> group_by_expressions;
