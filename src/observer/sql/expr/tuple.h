@@ -149,7 +149,7 @@ public:
         return rc;
       }
 
-      result = this_value.compare(other_value);
+      result =static_cast<int>(this_value.compare(other_value));
       if (0 != result) {
         return rc;
       }

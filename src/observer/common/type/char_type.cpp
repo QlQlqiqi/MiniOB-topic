@@ -50,7 +50,22 @@ RC CharType::cast_to(const Value &val, AttrType type, Value &result) const
     }
     case AttrType::NULLS: {
       result.set_null();
-      break;
+    } break;
+    case AttrType::INTS:{
+        int int_val;
+        if(val.get_int(int_val) != RC::SUCCESS){
+          LOG_WARN("failed to convert string to int. s=%s", val.value_.pointer_value_);
+          return RC::INTERNAL;
+        }
+        result.set_int(int_val);
+    } break;
+    case AttrType::FLOATS:{
+        float float_val;
+        if(val.get_float(float_val) != RC::SUCCESS){
+          LOG_WARN("failed to convert string to float. s=%s", val.value_.pointer_value_);
+          return RC::INTERNAL;
+        }
+        result.set_float(float_val);
     }
     default: {
       LOG_WARN("failed to cast to: from %s to %s", attr_type_to_string(attr_type_), attr_type_to_string(type));

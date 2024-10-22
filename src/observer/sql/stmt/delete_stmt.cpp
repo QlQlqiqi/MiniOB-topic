@@ -54,11 +54,6 @@ RC DeleteStmt::create(Db *db, const DeleteSqlNode &delete_sql, Stmt *&stmt)
   }
 
   // bind exprs in filter statement
-  rc = Stmt::bind_filter_stmt(db, {delete_sql.relation_name}, filter_stmt);
-  if (OB_FAIL(rc)) {
-    LOG_WARN("bind filter stmt failed in delete stmt");
-    return rc;
-  }
 
   stmt = new DeleteStmt(table, filter_stmt);
   return rc;

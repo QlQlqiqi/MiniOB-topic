@@ -42,7 +42,7 @@ RC OrderByPhysicalOperator::next() {
     }
   }
   idx_++;
-  if(idx_ == tuples_.size()){
+  if(idx_ == static_cast<int64_t>(tuples_.size())){
     return RC::RECORD_EOF;
   }
   return RC::SUCCESS;
@@ -71,12 +71,12 @@ RC OrderByPhysicalOperator::init() {
       filed_expr->get_value(*a, a_val);
       filed_expr->get_value(*b, b_val);
       auto cmp = a_val.compare(b_val);
-      if (cmp == 0)
+      if (cmp == ValCmpRes::EQUAL)
         continue;
-      if (cmp == -1) {
+      if (cmp == ValCmpRes::LESS) {
         return order_ops_[i] == OrderOp::ASC;
       }
-      if (cmp == 1) {
+      if (cmp == ValCmpRes::GREAT) {
         return order_ops_[i] == OrderOp::DESC;
       }
     }
