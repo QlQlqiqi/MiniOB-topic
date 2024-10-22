@@ -67,33 +67,47 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     for (size_t i = 0; i < values_.size(); ++i)
     {
       auto &f       = field_metas_[i];
-      int   val_len = values_[i].length();
+      auto &v       = values_[i];
 
-      if (f.type() == AttrType::CHARS)
+      // 1. prepare a record...
+      switch (v.attr_type())
       {
-        auto zeros = std::vector<char>(f.len(), '\0');
-        rc = table_record.set_field(f.offset(), f.len(), zeros.data());
-        if (OB_FAIL(rc))
+        case AttrType::NULLS:
         {
-          LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-          trx->rollback();
-          return rc;
+          assert(f.nullable());
+          auto zeros = std::vector<char>(f.len(), '\1');
+          rc = table_record.set_field(f.offset(), f.len(), zeros.data());
+          if (OB_FAIL(rc))
+          {
+            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+            trx->rollback();
+            return rc;
+          }
+        } break;
+        case AttrType::CHARS:
+        {
+          auto zeros = std::vector<char>(f.len(), '\0');
+          rc = table_record.set_field(f.offset(), f.len(), zeros.data());
+          if (OB_FAIL(rc))
+          {
+            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+            trx->rollback();
+            return rc;
+          }
+          [[fallthrough]];
         }
+        default:
+        {
+          rc = table_record.set_field(f.offset() + f.nullable(), v.length() - f.nullable(), values_[i].data());
+          if (OB_FAIL(rc)) {
+            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+            trx->rollback();
+            return rc;
+          }
+        } break;
       }
 
-      rc = table_record.set_field(f.offset(), val_len, values_[i].data());
-      if (OB_FAIL(rc)) {
-        LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-        trx->rollback();
-        return rc;
-      }
-
-      if (OB_FAIL(rc))
-      {
-        LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-        trx->rollback();
-        return rc;
-      }
+      // 2. remove old record...
       rc = trx->delete_record(table_, record);
       if (OB_FAIL(rc))
       {
@@ -101,7 +115,9 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         trx->rollback();
         return rc;
       }
-      rc = trx->insert_record(table_, table_record); 
+
+      // 3. insert new record...
+      rc = trx->insert_record(table_, table_record);
       if (OB_FAIL(rc))
       {
         LOG_WARN("failed to insert new record. rid=%d, rc=%s", record.rid(), strrc(rc));
