@@ -18,86 +18,42 @@ See the Mulan PSL v2 for more details. */
 #include "common/rc.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
+#include <sql/parser/expression_binder.h>
 
 FilterStmt::~FilterStmt() = default;
 
-RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
+RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *table_map,
     const Expression *conditions, FilterStmt *&stmt)
 {
-  RC rc = RC::SUCCESS;
-  stmt  = nullptr;
+  free(stmt);
 
   FilterStmt *tmp_stmt    = new FilterStmt();
-  // FilterUnit *filter_unit = nullptr;
+  BinderContext binder_context;
+
+    // tmp_stmt->set_expr(conditions->Clone());
+    // auto condition_expr = tmp_stmt->expr_.get();
+  for (auto [_, table]:(*table_map)) {
+    binder_context.add_table(table);
+  }
+  // collect query fields in `select` statement
+  vector<unique_ptr<Expression>> bound_expressions;
+  ExpressionBinder               expression_binder(binder_context);
+
 
   if (conditions) {
-    // 使用 expr
-    tmp_stmt->set_expr(conditions->Clone());
+    vector<unique_ptr<Expression>> filter_expressions;
+    filter_expressions.reserve(1);
+    auto                           l  = conditions->Clone();
+    RC                             rc = expression_binder.bind_expression(l, filter_expressions);
+    if (OB_FAIL(rc)) {
+      LOG_INFO("bind expression failed. rc=%s", strrc(rc));
+      return rc;
+    }
+    ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
+    tmp_stmt->set_expr(std::move(filter_expressions[0]));
   }
 
   stmt = tmp_stmt;
-  return rc;
-}
-
-RC get_table_and_field(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-    const RelAttrSqlNode &attr, Table *&table, const FieldMeta *&field)
-{
-  if (common::is_blank(attr.relation_name.c_str())) {
-    table = default_table;
-  } else if (nullptr != tables) {
-    auto iter = tables->find(attr.relation_name);
-    if (iter != tables->end()) {
-      table = iter->second;
-    }
-  } else {
-    table = db->find_table(attr.relation_name.c_str());
-  }
-  if (nullptr == table) {
-    LOG_WARN("No such table: attr.relation_name: %s", attr.relation_name.c_str());
-    return RC::SCHEMA_TABLE_NOT_EXIST;
-  }
-
-  field = table->table_meta().field(attr.attribute_name.c_str());
-  if (nullptr == field) {
-    LOG_WARN("no such field in table: table %s, field %s", table->name(), attr.attribute_name.c_str());
-    table = nullptr;
-    return RC::SCHEMA_FIELD_NOT_EXIST;
-  }
-
   return RC::SUCCESS;
 }
 
-RC FilterStmt::create_filter_unit(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
-    const Expression *condition, FilterUnit *&filter_unit)
-{
-  RC rc = RC::SUCCESS;
-
-  // 这里 condition 应该是 ComparisonExpr
-  if(condition->type() != ExprType::COMPARISON) {
-    LOG_WARN("condition should be ComparisonExpr, but now is: ", condition->type());
-    return RC::UNSUPPORTED;
-  }
-
-  auto expr = static_cast<const ComparisonExpr*>(condition);
-
-  CompOp comp = expr->comp();
-  if (comp < EQUAL_TO || comp >= NO_OP) {
-    LOG_WARN("invalid compare operator : %d", comp);
-    return RC::INVALID_ARGUMENT;
-  }
-
-  // TODO(qiqi): 需要先检查 table 中是否有 condition 出现的 field
-  //   rc                     = get_table_and_field(db, default_table, tables, condition.left_attr, table, field);
-  // if (rc != RC::SUCCESS) {
-  //   LOG_WARN("cannot find attr");
-  //   return rc;
-  // }
-
-  filter_unit = new FilterUnit;
-  filter_unit->set_comp(comp);
-  filter_unit->set_left(expr->left_con()->Clone());
-  filter_unit->set_right(expr->right_con()->Clone());
-
-  // 检查两个类型是否能够比较
-  return rc;
-}

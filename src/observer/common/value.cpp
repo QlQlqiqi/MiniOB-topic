@@ -278,6 +278,19 @@ int Value::compare(const Value &other) const {
   if(this->attr_type_ == AttrType::NULLS || other.attr_type_ == AttrType::NULLS){
     return -1;
   }
+  //转换逻辑
+  Value cast_val;
+  RC rc = RC::SUCCESS;
+  if(this->attr_type_ != other.attr_type_){
+    if((rc = Value::cast_to(*this, other.attr_type_, cast_val)) == RC::SUCCESS){
+      return DataType::type_instance(cast_val.attr_type_)->compare(cast_val, other); 
+    }
+    if((rc = Value::cast_to(other, this->attr_type_, cast_val)) == RC::SUCCESS){
+      return DataType::type_instance(cast_val.attr_type_)->compare(*this, cast_val); 
+    }
+    LOG_PANIC("two value cannot compare. left type=%s right type=%s", attr_type_to_string(this->attr_type_), attr_type_to_string(other.attr_type_));
+    return INT_MAX;
+  }
   return DataType::type_instance(this->attr_type_)->compare(*this, other); 
 }
 

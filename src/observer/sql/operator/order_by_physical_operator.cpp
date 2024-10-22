@@ -42,7 +42,7 @@ RC OrderByPhysicalOperator::next() {
     }
   }
   idx_++;
-  if(idx_ == tuples_.size()){
+  if(idx_ == static_cast<int64_t>(tuples_.size())){
     return RC::RECORD_EOF;
   }
   return RC::SUCCESS;

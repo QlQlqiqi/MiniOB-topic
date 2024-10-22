@@ -82,9 +82,6 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     return rc;
   }
   
-  // bind exprs in filter statement
-  Stmt::bind_filter_stmt(db, {update.relation_name}, filter_stmt);
-
   // everything alright
   stmt = new UpdateStmt(table, &update.value, 1, to_be_updated, 1, filter_stmt);
   return RC::SUCCESS;

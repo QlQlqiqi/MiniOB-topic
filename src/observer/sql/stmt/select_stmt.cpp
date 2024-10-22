@@ -96,12 +96,25 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
       rc                      = FilterStmt::create(db,
         table,
         &table_map,
-        inner_join_conditions[i].data(),
-        static_cast<int>(inner_join_conditions[i].size()),
+        inner_join_conditions[i].release(),
         filter_stmt);
       if (rc != RC::SUCCESS) {
         LOG_WARN("cannot construct filter stmt");
         return rc;
+      }
+
+      auto &expr = filter_stmt->get_expr();
+      ExpressionBinder expression_binder(binder_context);
+      if (expr) {
+        vector<unique_ptr<Expression>> filter_expressions;
+        auto                           l  = expr->Clone();
+        RC                             rc = expression_binder.bind_expression(l, filter_expressions);
+        if (OB_FAIL(rc)) {
+          LOG_INFO("bind expression failed. rc=%s", strrc(rc));
+          return rc;
+        }
+        ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
+        filter_stmt->set_expr(std::move(filter_expressions[0]));
       }
       join_conditions.insert({table, std::unique_ptr<FilterStmt>(filter_stmt)});
     }
@@ -150,14 +163,12 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
 
   // create filter statement in `where` statement
   FilterStmt *filter_stmt = nullptr;
-  RC          rc          = FilterStmt::create(db, default_table, &table_map, select_sql.conditions, filter_stmt);
+  RC          rc          = FilterStmt::create(db, default_table, &table_map, select_sql.conditions.release(), filter_stmt);
   if (rc != RC::SUCCESS) {
     LOG_WARN("cannot construct filter stmt");
     return rc;
   }
 
-  // bind exprs in filter statement
-  Stmt::bind_filter_stmt(db, select_sql.relations, filter_stmt);
 
   // everything alright
   SelectStmt *select_stmt = new SelectStmt();

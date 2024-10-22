@@ -40,12 +40,18 @@ RC CharType::cast_to(const Value &val, AttrType type, Value &result) const
   switch (type) {
     case AttrType::CHARS: {
       result = val;
-      break;
-    }
+    } break;
     case AttrType::NULLS: {
       result.set_null();
-      break;
-    }
+    } break;
+    case AttrType::INTS:{
+      try {
+        result.set_int(std::stol(val.value_.pointer_value_));
+      } catch (exception const &ex) {
+        LOG_TRACE("failed to convert string to number. s=%s, ex=%s", val.value_.pointer_value_, ex.what());
+        return RC::INTERNAL;
+      }
+    } break;
     default: {
       LOG_WARN("failed to cast to: from %s to %s", attr_type_to_string(attr_type_), attr_type_to_string(type));
       return RC::UNSUPPORTED;
