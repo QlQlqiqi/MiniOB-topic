@@ -75,7 +75,7 @@ void VectorType::compute(const VectorOp &op, const double *l, const double *r, c
 {
   std::vector<double> res;
   res.reserve(sz);
-  for (int i = 0; i < sz; i++) {
+  for (size_t i = 0; i < sz; i++) {
     double num = 0;
     switch (op) {
       case VECTOR_ADD: num = l[i] + r[i]; break;

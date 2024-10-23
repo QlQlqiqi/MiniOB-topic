@@ -54,23 +54,13 @@ UnboundAggregateExpr *create_aggregate_expression(const char* type,
 }
 
 Expression *create_function_expression(const FunctionExpr::Type type,
+                                       const char *sql_string,
                                        Expression *left,
-                                       Expression *right)
+                                       Expression *right,
+                                       YYLTYPE *llocp)
 {
-  std::string str;
-  if(type == FunctionExpr::Type::L2_DISTANCE) {
-    str.append("L2_DISTANCE(");
-  } else if(type == FunctionExpr::Type::COSINE_DISTANCE) {
-    str.append("COSINE_DISTANCE(");
-  } else if(type == FunctionExpr::Type::INNER_PRODUCT) {
-    str.append("INNER_PRODUCT(");
-  }
-  str.append(left->name());
-  str.append(",");
-  str.append(right->name());
-  str.append(")");
   Expression *expr = new FunctionExpr(type, left, right);
-  expr->set_name(str);
+  expr->set_name(token_name(sql_string, llocp));
   return expr;
 }
 
@@ -645,13 +635,13 @@ expression:
       delete $1;
     }
     | L2_DISTANCE LBRACE expression COMMA expression RBRACE {
-      $$ = create_function_expression(FunctionExpr::Type::L2_DISTANCE, $3, $5);
+      $$ = create_function_expression(FunctionExpr::Type::L2_DISTANCE, sql_string, $3, $5, &@$);
     }
     | COSINE_DISTANCE LBRACE expression COMMA expression RBRACE {
-      $$ = create_function_expression(FunctionExpr::Type::COSINE_DISTANCE, $3, $5);
+      $$ = create_function_expression(FunctionExpr::Type::COSINE_DISTANCE, sql_string, $3, $5, &@$);
     }
     | INNER_PRODUCT LBRACE expression COMMA expression RBRACE {
-      $$ = create_function_expression(FunctionExpr::Type::INNER_PRODUCT, $3, $5);
+      $$ = create_function_expression(FunctionExpr::Type::INNER_PRODUCT, sql_string, $3, $5, &@$);
     }
     | COUNT LBRACE group_by_expression_list RBRACE {
       $$ = create_aggregate_expression("count", $3, sql_string, &@$);
