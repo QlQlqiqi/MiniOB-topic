@@ -52,6 +52,7 @@ public:
   explicit Value(bool val);
   explicit Value(common::DateTime val);
   explicit Value(const char *s, int len = 0);
+  explicit Value(const std::vector<double> &v);
 
   Value(const Value &other);
   Value(Value &&other);
@@ -126,6 +127,7 @@ private:
   void set_int(int val);
   void set_float(float val);
   void set_string(const char *s, int len = 0);
+  void set_vector(const char *s, int len);
   void set_date(common::DateTime val);
   void set_string_from_other(const Value &other);
 
@@ -138,10 +140,12 @@ private:
     int32_t int_value_;
     float   float_value_;
     bool    bool_value_;
+    // vector 和 char 存储在相同位置，不过 vector 会将其解析为 double* 进行读取
     char   *pointer_value_;
     common::DateTime date_time_value_;
   } value_ = {.int_value_ = 0};
 
-  /// 是否申请并占有内存, 目前对于 CHARS 类型 own_data_ 为true, 其余类型 own_data_ 为false
+  /// 是否申请并占有内存, 目前对于 CHARS 和 VECTORS 类型 own_data_ 为true,
+  // 其余类型 own_data_ 为false
   bool own_data_ = false;
 };

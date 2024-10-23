@@ -381,6 +381,13 @@ AttrType ArithmeticExpr::value_type() const
     return left_->value_type();
   }
 
+  // vector 和 chars 比较的时候，转为 chars 比较
+  if ((left_->value_type() == AttrType::VECTORS && right_->value_type() == AttrType::CHARS) ||
+      (left_->value_type() == AttrType::CHARS && right_->value_type() == AttrType::VECTORS)) {
+    return AttrType::VECTORS;
+  }
+
+  // 数字之间比较
   if (left_->value_type() == AttrType::INTS && right_->value_type() == AttrType::INTS &&
       arithmetic_type_ != Type::DIV) {
     return AttrType::INTS;

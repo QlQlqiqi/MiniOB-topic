@@ -17,7 +17,10 @@ See the Mulan PSL v2 for more details. */
 int IntegerType::compare(const Value &left, const Value &right) const
 {
   ASSERT(left.attr_type() == AttrType::INTS, "left type is not integer");
-  ASSERT(right.attr_type() == AttrType::INTS || right.attr_type() == AttrType::FLOATS, "right type is not numeric");
+  if(right.attr_type() != AttrType::INTS && right.attr_type() != AttrType::FLOATS) {
+    LOG_WARN("right type %s is not numerics", attr_type_to_string(right.attr_type()));
+    return INT32_MAX;
+  }
   if (right.attr_type() == AttrType::INTS) {
     return common::compare_int((void *)&left.value_.int_value_, (void *)&right.value_.int_value_);
   } else if (right.attr_type() == AttrType::FLOATS) {

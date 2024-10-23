@@ -34,6 +34,20 @@ int compare_int(void *arg1, void *arg2)
   }
 }
 
+int compare_double(const void *arg1, const void *arg2)
+{
+  double v1  = *(const double *)arg1;
+  double v2  = *(const double *)arg2;
+  double cmp = v1 - v2;
+  if (cmp > EPSILON) {
+    return 1;
+  }
+  if (cmp < -EPSILON) {
+    return -1;
+  }
+  return 0;
+}
+
 int compare_float(void *arg1, void *arg2)
 {
   float v1  = *(float *)arg1;

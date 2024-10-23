@@ -360,8 +360,13 @@ attr_def:
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
-      // $$->length = $4;
-      $$->length = $4 + ($6 == true);
+      $$->length = $6 == true;
+      // 如果是 vector，那么这里的 length 代表的是数量
+      if($2 == static_cast<int>(AttrType::VECTORS)) {
+        $$->length += $4 * sizeof(double);
+      } else {
+        $$->length += $4;
+      }
       $$->nullable = $6;
       free($1);
     }
@@ -370,7 +375,7 @@ attr_def:
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
-      // $$->length = 4;
+      // 这块是 4 是因为 char 和 vector 需要用 ()
       $$->length = 4 + ($3 == true);
       $$->nullable = $3;
       free($1);
