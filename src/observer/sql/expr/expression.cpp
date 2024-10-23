@@ -757,9 +757,9 @@ RC FunctionExpr::try_get_value(Value &value) const
     }
   }
   switch (function_type_) {
-    case Type::L2_DISTANCE: rc = calc_l2_distance(left_value, right_value, value);
-    case Type::COSINE_DISTANCE: rc = calc_cosine_distance(left_value, right_value, value);
-    case Type::INNER_PRODUCT: rc = calc_inner_product(left_value, right_value, value);
+    case Type::L2_DISTANCE: rc = calc_l2_distance(left_value, right_value, value); break;
+    case Type::COSINE_DISTANCE: rc = calc_cosine_distance(left_value, right_value, value); break;
+    case Type::INNER_PRODUCT: rc = calc_inner_product(left_value, right_value, value); break;
   }
   return rc;
 }
