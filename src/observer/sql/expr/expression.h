@@ -47,6 +47,7 @@ enum class ExprType
   CONJUNCTION,  ///< 多个表达式使用同一种关系(AND或OR)来联结
   ARITHMETIC,   ///< 算术运算
   AGGREGATION,  ///< 聚合运算
+  FUNCTION,     ///< vector 函数运算
 };
 
 /**
@@ -516,4 +517,52 @@ public:
 private:
   Type                        aggregate_type_;
   std::unique_ptr<Expression> child_;
+};
+
+class FunctionExpr : public Expression
+{
+public:
+  enum class Type
+  {
+    L2_DISTANCE,
+    COSINE_DISTANCE,
+    INNER_PRODUCT,
+  };
+
+public:
+  FunctionExpr(Type type, Expression *left, Expression *right);
+  FunctionExpr(Type type, std::unique_ptr<Expression> left, std::unique_ptr<Expression> right);
+  virtual ~FunctionExpr() = default;
+
+  virtual std::unique_ptr<Expression> Clone() const override
+  {
+    return std::make_unique<FunctionExpr>(function_type_, left_->Clone(), right_->Clone());
+  }
+  bool equal(const Expression &other) const override;
+
+  ExprType type() const override { return ExprType::FUNCTION; }
+  AttrType value_type() const override { return AttrType::FLOATS; }
+  Type     function_type() const { return function_type_; }
+  int      value_length() const override { return left_->value_length(); }
+
+  RC try_get_value(Value &value) const override;
+  RC get_value(const Tuple &tuple, Value &value) const override;
+
+  const std::unique_ptr<Expression> &left() const { return left_; }
+  std::unique_ptr<Expression> &left() { return left_; }
+  const std::unique_ptr<Expression> &right() const { return right_; }
+  std::unique_ptr<Expression> &right() { return right_; }
+
+private:
+  RC calc_l2_distance(const Value &left, const Value &right, Value &result) const;
+  RC calc_cosine_distance(const Value &left, const Value &right, Value &result) const;
+  RC calc_inner_product(const Value &left, const Value &right, Value &result) const;
+
+public:
+  static RC type_from_string(const char *type_str, Type &type);
+
+private:
+  Type                        function_type_;
+  std::unique_ptr<Expression> left_;
+  std::unique_ptr<Expression> right_;
 };

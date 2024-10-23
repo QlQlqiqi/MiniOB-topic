@@ -42,9 +42,11 @@ RC VectorType::check(const Value &left, const Value &right, Value &result1, Valu
       return RC::UNSUPPORTED;
     }
     result2 = right;
+    return RC::SUCCESS;
   }
 
-  return RC::SUCCESS;
+  // 其他情况不予考虑
+  return RC::UNSUPPORTED;
 }
 
 int VectorType::compare(const Value &left, const Value &right) const
@@ -72,6 +74,7 @@ int VectorType::compare(const Value &left, const Value &right) const
 void VectorType::compute(const VectorOp &op, const double *l, const double *r, const size_t &sz, Value &result) const
 {
   std::vector<double> res;
+  res.reserve(sz);
   for (int i = 0; i < sz; i++) {
     double num = 0;
     switch (op) {

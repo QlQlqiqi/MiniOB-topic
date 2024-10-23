@@ -53,6 +53,27 @@ UnboundAggregateExpr *create_aggregate_expression(const char* type,
   return expr;
 }
 
+Expression *create_function_expression(const FunctionExpr::Type type,
+                                       Expression *left,
+                                       Expression *right)
+{
+  std::string str;
+  if(type == FunctionExpr::Type::L2_DISTANCE) {
+    str.append("L2_DISTANCE(");
+  } else if(type == FunctionExpr::Type::COSINE_DISTANCE) {
+    str.append("COSINE_DISTANCE(");
+  } else if(type == FunctionExpr::Type::INNER_PRODUCT) {
+    str.append("INNER_PRODUCT(");
+  }
+  str.append(left->name());
+  str.append(",");
+  str.append(right->name());
+  str.append(")");
+  Expression *expr = new FunctionExpr(type, left, right);
+  expr->set_name(str);
+  return expr;
+}
+
 %}
 
 %define api.pure full
@@ -125,6 +146,9 @@ UnboundAggregateExpr *create_aggregate_expression(const char* type,
         AVG
         MAX
         MIN
+        L2_DISTANCE
+        COSINE_DISTANCE
+        INNER_PRODUCT
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -619,6 +643,15 @@ expression:
       $$ = new UnboundFieldExpr(node->relation_name, node->attribute_name);
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
+    }
+    | L2_DISTANCE LBRACE expression COMMA expression RBRACE {
+      $$ = create_function_expression(FunctionExpr::Type::L2_DISTANCE, $3, $5);
+    }
+    | COSINE_DISTANCE LBRACE expression COMMA expression RBRACE {
+      $$ = create_function_expression(FunctionExpr::Type::COSINE_DISTANCE, $3, $5);
+    }
+    | INNER_PRODUCT LBRACE expression COMMA expression RBRACE {
+      $$ = create_function_expression(FunctionExpr::Type::INNER_PRODUCT, $3, $5);
     }
     | COUNT LBRACE group_by_expression_list RBRACE {
       $$ = create_aggregate_expression("count", $3, sql_string, &@$);

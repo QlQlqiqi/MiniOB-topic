@@ -13,6 +13,7 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/expr/expression.h"
+#include "common/type/vector_type.h"
 #include "sql/expr/tuple.h"
 #include "sql/expr/arithmetic_operator.hpp"
 #include <regex>
@@ -704,6 +705,155 @@ RC AggregateExpr::type_from_string(const char *type_str, AggregateExpr::Type &ty
     type = Type::MIN;
   } else {
     rc = RC::INVALID_ARGUMENT;
+  }
+  return rc;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+FunctionExpr::FunctionExpr(Type type, Expression *left, Expression *right)
+    : function_type_(type), left_(left), right_(right)
+{}
+
+FunctionExpr::FunctionExpr(Type type, std::unique_ptr<Expression> left, std::unique_ptr<Expression> right)
+    : function_type_(type), left_(std::move(left)), right_(std::move(right))
+{}
+
+bool FunctionExpr::equal(const Expression &other) const
+{
+  if (this == &other) {
+    return true;
+  }
+  if (other.type() != type()) {
+    return false;
+  }
+  const FunctionExpr &func_expr = static_cast<const FunctionExpr &>(other);
+  return function_type() == func_expr.function_type() && value_length() == func_expr.value_length() &&
+         left_->equal(*func_expr.left()) && right_->equal(*func_expr.right());
+}
+
+RC FunctionExpr::try_get_value(Value &value) const
+{
+  RC rc = RC::SUCCESS;
+
+  Value left_value;
+  Value right_value;
+
+  rc = left_->try_get_value(left_value);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to try get value of left expression. rc=%s", strrc(rc));
+    return rc;
+  }
+  if (right_) {
+    rc = right_->try_get_value(right_value);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to try get value of right expression. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+  switch (function_type_) {
+    case Type::L2_DISTANCE: rc = calc_l2_distance(left_value, right_value, value);
+    case Type::COSINE_DISTANCE: rc = calc_cosine_distance(left_value, right_value, value);
+    case Type::INNER_PRODUCT: rc = calc_inner_product(left_value, right_value, value);
+  }
+  return rc;
+}
+
+RC FunctionExpr::get_value(const Tuple &tuple, Value &value) const
+{
+  RC rc = RC::SUCCESS;
+
+  Value left_value;
+  Value right_value;
+
+  rc = left_->get_value(tuple, left_value);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
+    return rc;
+  }
+  if (right_) {
+    rc = right_->get_value(tuple, right_value);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to get value of right expression. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+  // 左右必须均为 vector，否则至少为 chars，并且可以转为 vectors
+  if (left_->value_type() != AttrType::VECTORS || right_->value_type() != AttrType::VECTORS) {
+    if (left_->value_type() == AttrType::CHARS) {
+      Value tmp = left_value;
+      rc        = DataType::type_instance(AttrType::CHARS)->cast_to(tmp, AttrType::VECTORS, left_value);
+    }
+    if (right_->value_type() == AttrType::CHARS) {
+      Value tmp = right_value;
+      rc        = DataType::type_instance(AttrType::CHARS)->cast_to(tmp, AttrType::VECTORS, right_value);
+    }
+    if (OB_FAIL(rc)) {
+      return rc;
+    }
+    ASSERT(left_value.attr_type() == AttrType::VECTORS && right_value.attr_type() == AttrType::VECTORS,"function expr get value failed");
+  }
+  switch (function_type_) {
+    case Type::L2_DISTANCE: rc = calc_l2_distance(left_value, right_value, value); break;
+    case Type::COSINE_DISTANCE: rc = calc_cosine_distance(left_value, right_value, value); break;
+    case Type::INNER_PRODUCT: rc = calc_inner_product(left_value, right_value, value); break;
+  }
+  return rc;
+}
+
+RC FunctionExpr::calc_l2_distance(const Value &left, const Value &right, Value &result) const
+{
+  auto   l   = reinterpret_cast<const double *>(left.data());
+  auto   r   = reinterpret_cast<const double *>(right.data());
+  int    len = value_length() / sizeof(double);
+  double ans = 0;
+  for (int i = 0; i < len; i++) {
+    ans += (l[i] - r[i]) * (l[i] - r[i]);
+  }
+  ans    = std::sqrt(ans);
+  result = Value(static_cast<float>(ans));
+  return RC::SUCCESS;
+}
+
+RC FunctionExpr::calc_cosine_distance(const Value &left, const Value &right, Value &result) const
+{
+  auto   l    = reinterpret_cast<const double *>(left.data());
+  auto   r    = reinterpret_cast<const double *>(right.data());
+  int    len  = value_length() / sizeof(double);
+  double ans1 = 0;
+  double ans2 = 0;
+  double ans3 = 0;
+  for (int i = 0; i < len; i++) {
+    ans1 += l[i] * r[i];
+    ans1 += l[i] * l[i];
+    ans1 += r[i] * r[i];
+  }
+  ans1   = (1 - ans1) / (1 - std::sqrt(ans2) * std::sqrt(ans3));
+  result = Value(static_cast<float>(ans1));
+  return RC::SUCCESS;
+}
+
+RC FunctionExpr::calc_inner_product(const Value &left, const Value &right, Value &result) const
+{
+  auto   l   = reinterpret_cast<const double *>(left.data());
+  auto   r   = reinterpret_cast<const double *>(right.data());
+  int    len = value_length() / sizeof(double);
+  double ans = 0;
+  for (int i = 0; i < len; i++) {
+    ans += l[i] * r[i];
+  }
+  result = Value(static_cast<float>(ans));
+  return RC::SUCCESS;
+}
+
+RC FunctionExpr::type_from_string(const char *type_str, FunctionExpr::Type &type)
+{
+  RC rc = RC::SUCCESS;
+  if (0 == strcasecmp(type_str, "l2_distance")) {
+    type = Type::L2_DISTANCE;
+  } else if (0 == strcasecmp(type_str, "cosine_distance")) {
+    type = Type::COSINE_DISTANCE;
+  } else if (0 == strcasecmp(type_str, "inner_product")) {
+    type = Type::INNER_PRODUCT;
   }
   return rc;
 }

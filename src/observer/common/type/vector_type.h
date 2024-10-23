@@ -18,7 +18,7 @@ See the Mulan PSL v2 for more details. */
  */
 class VectorType : public DataType
 {
-private:
+public:
   enum VectorOp
   {
     VECTOR_ADD,
@@ -27,7 +27,6 @@ private:
     VECTOR_DIV,
   };
 
-public:
   VectorType() : DataType(AttrType::VECTORS) {}
   virtual ~VectorType() = default;
 
