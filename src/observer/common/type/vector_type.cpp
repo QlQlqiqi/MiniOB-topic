@@ -187,7 +187,6 @@ RC VectorType::cast_to(const Value &val, AttrType type, Value &result) const
 RC VectorType::to_string(const Value &val, string &result) const
 {
   ASSERT(val.length() % sizeof(double) == 0, "value length %d should be mutiple of %d", val.length(), sizeof(double));
-  // TODO(qiqi): 输出 '['、']'、','
   stringstream ss;
   ss << "[";
   for (int i = 0, num = val.length() / sizeof(double); i < num; i++) {
