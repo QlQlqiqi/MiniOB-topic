@@ -64,6 +64,16 @@ Expression *create_function_expression(const FunctionExpr::Type type,
   return expr;
 }
 
+Value *vec2val(const char *sql_string, YYLTYPE *llocp)
+{
+  auto str = token_name(sql_string, llocp);
+  std::cout << str << std::endl;
+  auto tmp = Value(str.c_str());
+  auto result = new Value();
+  DataType::type_instance(AttrType::CHARS)->cast_to(tmp, AttrType::VECTORS, *result);
+  return result;
+}
+
 %}
 
 %define api.pure full
@@ -139,6 +149,8 @@ Expression *create_function_expression(const FunctionExpr::Type type,
         L2_DISTANCE
         COSINE_DISTANCE
         INNER_PRODUCT
+        VECTORS
+        QUOTE
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -157,6 +169,8 @@ Expression *create_function_expression(const FunctionExpr::Type type,
   int                                        number;
   float                                      floats;
   bool                                       bools;
+  std::vector<double> *                      double_list;
+  double                                     float_number;
 }
 
 %token <number> NUMBER
@@ -167,6 +181,8 @@ Expression *create_function_expression(const FunctionExpr::Type type,
 //非终结符
 
 /** type 定义了各种解析后的结果输出的是什么类型。类型对应了 union 中的定义的成员变量名称 **/
+%type <float_number>       float_number
+%type <double_list>         double_list
 %type <number>              type
 %type <expression>          condition
 %type <value>               value
@@ -488,6 +504,10 @@ value:
       }
 
     }
+    | '[' double_list ']'
+    {
+      $$ = vec2val(sql_string, &@$);
+    }
     |SSS {
       char *tmp = common::substr($1,1,strlen($1)-2);
       $$ = new Value(tmp);
@@ -509,7 +529,25 @@ storage_format:
       $$ = $4;
     }
     ;
-    
+double_list: {
+      $$ = new std::vector<double>();
+    }
+    | float_number {
+      $$ = new std::vector<double>();
+      $$->emplace_back($1);
+    }
+    | double_list COMMA float_number {
+      $$ = $1;
+      $$->emplace_back($3);
+    }
+    ;
+float_number: NUMBER {
+      $$ = $1;
+    }
+    | FLOAT {
+      $$ = $1;
+    }
+    ;
 delete_stmt:    /*  delete 语句的语法解析树*/
     DELETE FROM ID where 
     {

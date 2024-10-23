@@ -116,7 +116,7 @@ template <class T>
 void val_to_str(const T &val, string &str, ios_base &(*radix)(ios_base &) = std::dec);
 
 /**
- * Double to string
+ * Double to string，保留两位小数
  * @param v
  * @return
  */

@@ -373,12 +373,30 @@ bool ArithmeticExpr::equal(const Expression &other) const
 }
 AttrType ArithmeticExpr::value_type() const
 {
+  // 负数
+  if (!right_) {
+    return left_->value_type();
+  }
+
   // 任何数和 null 比较均为 null
-  if ((left_ && left_->value_type() == AttrType::NULLS) || (right_ && right_->value_type() == AttrType::NULLS)) {
+  if ((left_->value_type() == AttrType::NULLS) || (right_->value_type() == AttrType::NULLS)) {
     return AttrType::NULLS;
   }
 
-  if (!right_) {
+  // 数字之间比较
+  if ((left_->value_type() == AttrType::INTS || left_->value_type() == AttrType::FLOATS) &&
+      (right_->value_type() == AttrType::INTS || right_->value_type() == AttrType::FLOATS)) {
+    if (left_->value_type() == AttrType::FLOATS || right_->value_type() == AttrType::FLOATS) {
+      return AttrType::FLOATS;
+    }
+    if (arithmetic_type_ == Type::DIV) {
+      return AttrType::FLOATS;
+    }
+    return AttrType::INTS;
+  }
+
+  // 如果 type 相同，直接返回
+  if (left_->value_type() == right_->value_type()) {
     return left_->value_type();
   }
 
@@ -386,12 +404,6 @@ AttrType ArithmeticExpr::value_type() const
   if ((left_->value_type() == AttrType::VECTORS && right_->value_type() == AttrType::CHARS) ||
       (left_->value_type() == AttrType::CHARS && right_->value_type() == AttrType::VECTORS)) {
     return AttrType::VECTORS;
-  }
-
-  // 数字之间比较
-  if (left_->value_type() == AttrType::INTS && right_->value_type() == AttrType::INTS &&
-      arithmetic_type_ != Type::DIV) {
-    return AttrType::INTS;
   }
 
   return AttrType::FLOATS;
@@ -404,29 +416,29 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
   // 如果 left_value 和 right_value 有一个是 nulls，则结果为 null
   if (left_value.attr_type() == AttrType::NULLS || right_value.attr_type() == AttrType::NULLS) {
     value.set_type(AttrType::NULLS);
-  } else {
-    value.set_type(value_type());
+    return rc;
   }
+  value.set_type(value_type());
 
   switch (arithmetic_type_) {
     case Type::ADD: {
-      Value::add(left_value, right_value, value);
+      rc = Value::add(left_value, right_value, value);
     } break;
 
     case Type::SUB: {
-      Value::subtract(left_value, right_value, value);
+      rc = Value::subtract(left_value, right_value, value);
     } break;
 
     case Type::MUL: {
-      Value::multiply(left_value, right_value, value);
+      rc = Value::multiply(left_value, right_value, value);
     } break;
 
     case Type::DIV: {
-      Value::divide(left_value, right_value, value);
+      rc = Value::divide(left_value, right_value, value);
     } break;
 
     case Type::NEGATIVE: {
-      Value::negative(left_value, value);
+      rc = Value::negative(left_value, value);
     } break;
 
     default: {
@@ -751,9 +763,9 @@ RC FunctionExpr::try_get_value(Value &value) const
     }
   }
   switch (function_type_) {
-    case Type::L2_DISTANCE: rc = calc_l2_distance(left_value, right_value, value);
-    case Type::COSINE_DISTANCE: rc = calc_cosine_distance(left_value, right_value, value);
-    case Type::INNER_PRODUCT: rc = calc_inner_product(left_value, right_value, value);
+    case Type::L2_DISTANCE: rc = calc_l2_distance(left_value, right_value, value); break;
+    case Type::COSINE_DISTANCE: rc = calc_cosine_distance(left_value, right_value, value); break;
+    case Type::INNER_PRODUCT: rc = calc_inner_product(left_value, right_value, value); break;
   }
   return rc;
 }
@@ -777,20 +789,12 @@ RC FunctionExpr::get_value(const Tuple &tuple, Value &value) const
       return rc;
     }
   }
-  // 左右必须均为 vector，否则至少为 chars，并且可以转为 vectors
-  if (left_->value_type() != AttrType::VECTORS || right_->value_type() != AttrType::VECTORS) {
-    if (left_->value_type() == AttrType::CHARS) {
-      Value tmp = left_value;
-      rc        = DataType::type_instance(AttrType::CHARS)->cast_to(tmp, AttrType::VECTORS, left_value);
-    }
-    if (right_->value_type() == AttrType::CHARS) {
-      Value tmp = right_value;
-      rc        = DataType::type_instance(AttrType::CHARS)->cast_to(tmp, AttrType::VECTORS, right_value);
-    }
-    if (OB_FAIL(rc)) {
-      return rc;
-    }
-    ASSERT(left_value.attr_type() == AttrType::VECTORS && right_value.attr_type() == AttrType::VECTORS,"function expr get value failed");
+  // 检查两个 vector 是否可以计算
+  Value tmp1 = left_value;
+  Value tmp2 = right_value;
+  if (OB_FAIL(rc = reinterpret_cast<const VectorType *>(DataType::type_instance(AttrType::CHARS))
+                       ->check(tmp1, tmp2, left_value, right_value))) {
+    return rc;
   }
   switch (function_type_) {
     case Type::L2_DISTANCE: rc = calc_l2_distance(left_value, right_value, value); break;
@@ -804,7 +808,7 @@ RC FunctionExpr::calc_l2_distance(const Value &left, const Value &right, Value &
 {
   auto   l   = reinterpret_cast<const double *>(left.data());
   auto   r   = reinterpret_cast<const double *>(right.data());
-  int    len = value_length() / sizeof(double);
+  int    len = left.length() / sizeof(double);
   double ans = 0;
   for (int i = 0; i < len; i++) {
     ans += (l[i] - r[i]) * (l[i] - r[i]);
@@ -818,16 +822,20 @@ RC FunctionExpr::calc_cosine_distance(const Value &left, const Value &right, Val
 {
   auto   l    = reinterpret_cast<const double *>(left.data());
   auto   r    = reinterpret_cast<const double *>(right.data());
-  int    len  = value_length() / sizeof(double);
+  int    len  = left.length() / sizeof(double);
   double ans1 = 0;
   double ans2 = 0;
   double ans3 = 0;
   for (int i = 0; i < len; i++) {
     ans1 += l[i] * r[i];
-    ans1 += l[i] * l[i];
-    ans1 += r[i] * r[i];
+    ans2 += l[i] * l[i];
+    ans3 += r[i] * r[i];
   }
-  ans1   = (1 - ans1) / (1 - std::sqrt(ans2) * std::sqrt(ans3));
+  if (ans2 == 0 || ans3 == 0) {
+    ans1 = 1;
+  } else {
+    ans1 = 1 - ans1 / std::sqrt(ans2) / std::sqrt(ans3);
+  }
   result = Value(static_cast<float>(ans1));
   return RC::SUCCESS;
 }
@@ -836,7 +844,7 @@ RC FunctionExpr::calc_inner_product(const Value &left, const Value &right, Value
 {
   auto   l   = reinterpret_cast<const double *>(left.data());
   auto   r   = reinterpret_cast<const double *>(right.data());
-  int    len = value_length() / sizeof(double);
+  int    len = left.length() / sizeof(double);
   double ans = 0;
   for (int i = 0; i < len; i++) {
     ans += l[i] * r[i];
