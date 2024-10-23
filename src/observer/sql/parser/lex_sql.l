@@ -138,6 +138,7 @@ NULLABLE                                RETURN_TOKEN(NULL_T);
 "("                                     RETURN_TOKEN(LBRACE);
 ")"                                     RETURN_TOKEN(RBRACE);
 
+{QUOTE}                                 RETURN_TOKEN(QUOTE);
 ","                                     RETURN_TOKEN(COMMA);
 "="                                     RETURN_TOKEN(EQ);
 "<="                                    RETURN_TOKEN(LE);

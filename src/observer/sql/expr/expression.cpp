@@ -373,13 +373,19 @@ bool ArithmeticExpr::equal(const Expression &other) const
 }
 AttrType ArithmeticExpr::value_type() const
 {
-  // 任何数和 null 比较均为 null
-  if ((left_ && left_->value_type() == AttrType::NULLS) || (right_ && right_->value_type() == AttrType::NULLS)) {
-    return AttrType::NULLS;
-  }
-
+  // 负数
   if (!right_) {
     return left_->value_type();
+  }
+
+  // 如果 type 相同，直接返回
+  if (left_->value_type() == right_->value_type()) {
+    return AttrType::VECTORS;
+  }
+
+  // 任何数和 null 比较均为 null
+  if ((left_->value_type() == AttrType::NULLS) || (right_->value_type() == AttrType::NULLS)) {
+    return AttrType::NULLS;
   }
 
   // vector 和 chars 比较的时候，转为 chars 比较
