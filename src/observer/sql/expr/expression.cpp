@@ -383,6 +383,18 @@ AttrType ArithmeticExpr::value_type() const
     return AttrType::NULLS;
   }
 
+  // 数字之间比较
+  if ((left_->value_type() == AttrType::INTS || left_->value_type() == AttrType::FLOATS) &&
+      (right_->value_type() == AttrType::INTS || right_->value_type() == AttrType::FLOATS)) {
+    if (left_->value_type() == AttrType::FLOATS || right_->value_type() == AttrType::FLOATS) {
+      return AttrType::FLOATS;
+    }
+    if (arithmetic_type_ == Type::DIV) {
+      return AttrType::FLOATS;
+    }
+    return AttrType::INTS;
+  }
+
   // 如果 type 相同，直接返回
   if (left_->value_type() == right_->value_type()) {
     return left_->value_type();
@@ -392,12 +404,6 @@ AttrType ArithmeticExpr::value_type() const
   if ((left_->value_type() == AttrType::VECTORS && right_->value_type() == AttrType::CHARS) ||
       (left_->value_type() == AttrType::CHARS && right_->value_type() == AttrType::VECTORS)) {
     return AttrType::VECTORS;
-  }
-
-  // 数字之间比较
-  if (left_->value_type() == AttrType::INTS && right_->value_type() == AttrType::INTS &&
-      arithmetic_type_ != Type::DIV) {
-    return AttrType::INTS;
   }
 
   return AttrType::FLOATS;
