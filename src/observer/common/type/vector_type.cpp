@@ -1,52 +1,41 @@
 #include "common/log/log.h"
 #include "common/rc.h"
+#include "common/type/attr_type.h"
 #include "common/type/vector_type.h"
 #include "common/value.h"
 #include "common/lang/comparator.h"
 
 RC VectorType::check(const Value &left, const Value &right, Value &result1, Value &result2) const
 {
+  result1 = left;
+  result2 = right;
   // 这两个至少一个 vector，另一个是 chars
-  if ((left.attr_type() == AttrType::VECTORS && right.attr_type() == AttrType::CHARS) ||
-      (left.attr_type() == AttrType::CHARS && right.attr_type() == AttrType::VECTORS) ||
-      (left.attr_type() == AttrType::VECTORS && right.attr_type() == AttrType::VECTORS)) {
-    if (left.attr_type() == AttrType::CHARS) {
-      return check(right, left, result2, result1);
-    }
-    ASSERT(left.attr_type() == AttrType::VECTORS, "left type is not integer");
-    result1 = left;
-    // 如果是 chars，可以尝试将其转为 vector
-    if (right.attr_type() == AttrType::CHARS) {
-      Value tmp;
-      auto  rc = right.cast_to(right, AttrType::VECTORS, tmp);
-      if (OB_FAIL(rc)) {
-        LOG_WARN("cast to vectors failed: %s", right.to_string().c_str());
-        return RC::UNSUPPORTED;
-      }
-      ASSERT(tmp.attr_type() == AttrType::VECTORS, "right type should be vector");
-      // vector 的 len 必须相同
-      if (left.length() != tmp.length()) {
-        LOG_WARN("left length %d is different of right's %d", left.length(), tmp.length());
-        return RC::UNSUPPORTED;
-      }
-      result2 = tmp;
-      return RC::SUCCESS;
-    }
-    if (right.attr_type() != AttrType::VECTORS) {
-      LOG_WARN("right type %s is not vector", attr_type_to_string(right.attr_type()));
+  if (left.attr_type() == AttrType::CHARS) {
+    auto rc = left.cast_to(left, AttrType::VECTORS, result1);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("cast to vectors failed: %s", left.to_string().c_str());
       return RC::UNSUPPORTED;
     }
-    // vector 的 len 必须相同
-    if (left.length() != right.length()) {
-      LOG_WARN("left length %d is different of right's %d", left.length(), right.length());
+  }
+  if (right.attr_type() == AttrType::CHARS) {
+    auto rc = right.cast_to(right, AttrType::VECTORS, result2);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("cast to vectors failed: %s", right.to_string().c_str());
       return RC::UNSUPPORTED;
     }
-    result2 = right;
-    return RC::SUCCESS;
   }
 
-  // 其他情况不予考虑
-  return RC::UNSUPPORTED;
+  if (result1.attr_type() != AttrType::VECTORS || result2.attr_type() != AttrType::VECTORS) {
+    LOG_WARN("left type %s should be same as right's %s", attr_type_to_string(result1.attr_type()),attr_type_to_string(result2.attr_type()));
+    return RC::UNSUPPORTED;
+  }
+
+  // vector 的 len 必须相同
+  if (result1.length() != result2.length()) {
+    LOG_WARN("left length %d is different of right's %d", result1.length(), result2.length());
+    return RC::UNSUPPORTED;
+  }
+  return RC::SUCCESS;
 }
 
 int VectorType::compare(const Value &left, const Value &right) const
