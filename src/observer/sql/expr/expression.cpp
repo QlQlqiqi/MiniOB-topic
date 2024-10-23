@@ -380,7 +380,7 @@ AttrType ArithmeticExpr::value_type() const
 
   // 如果 type 相同，直接返回
   if (left_->value_type() == right_->value_type()) {
-    return AttrType::VECTORS;
+    return left_->value_type();
   }
 
   // 任何数和 null 比较均为 null
