@@ -13,9 +13,13 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/expr/expression.h"
+#include "common/lang/defer.h"
 #include "common/type/vector_type.h"
 #include "sql/expr/tuple.h"
 #include "sql/expr/arithmetic_operator.hpp"
+#include "sql/stmt/select_stmt.h"
+#include "sql/operator/logical_operator.h"
+#include "sql/operator/physical_operator.h"
 #include <regex>
 
 using namespace std;
@@ -865,3 +869,15 @@ RC FunctionExpr::type_from_string(const char *type_str, FunctionExpr::Type &type
   }
   return rc;
 }
+
+SubQueryExpr::SubQueryExpr(SelectSqlNode &&sql_node) { sql_node_ = std::make_unique<SelectSqlNode>(std::move(sql_node)); }
+SubQueryExpr::~SubQueryExpr() = default;
+std::unique_ptr<Expression> SubQueryExpr::Clone() const { return nullptr; }
+
+const std::unique_ptr<SelectSqlNode>    &SubQueryExpr::sql_node() const { return sql_node_; }
+void                                     SubQueryExpr::set_select_stmt(SelectStmt *stmt) { stmt_.reset(stmt); }
+const std::unique_ptr<SelectStmt>       &SubQueryExpr::select_stmt() const { return stmt_; }
+void                                     SubQueryExpr::set_logical_oper(std::unique_ptr<LogicalOperator> &&oper) { logical_oper_ = std::move(oper); }
+const std::unique_ptr<LogicalOperator>  &SubQueryExpr::logical_oper() { return logical_oper_; }
+void                                     SubQueryExpr::set_physical_oper(std::unique_ptr<PhysicalOperator> &&oper) { physical_oper_ = std::move(oper); }
+const std::unique_ptr<PhysicalOperator> &SubQueryExpr::physical_oper() { return physical_oper_; }

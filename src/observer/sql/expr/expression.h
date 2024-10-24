@@ -48,6 +48,7 @@ enum class ExprType
   ARITHMETIC,   ///< 算术运算
   AGGREGATION,  ///< 聚合运算
   FUNCTION,     ///< vector 函数运算
+  SUBQUERY,     ///< 子查询
 };
 
 /**
@@ -565,4 +566,42 @@ private:
   Type                        function_type_;
   std::unique_ptr<Expression> left_;
   std::unique_ptr<Expression> right_;
+};
+
+class SelectSqlNode;
+class SelectStmt;
+class LogicalOperator;
+class PhysicalOperator;
+class SubQueryExpr : public Expression
+{
+public:
+  SubQueryExpr(SelectSqlNode&& sql_node);
+  virtual ~SubQueryExpr();
+
+  RC open(Trx* trx);
+  RC close();
+
+  bool eof(const Tuple &tuple) const;
+
+  RC get_value(const Tuple &tuple, Value &value) const override { return RC::UNIMPLEMENTED; }
+
+  ExprType type() const override { return ExprType::SUBQUERY; }
+
+  AttrType value_type() const override { return AttrType::UNDEFINED; }
+
+  std::unique_ptr<Expression> Clone() const override;
+
+  const std::unique_ptr<SelectSqlNode>    &sql_node() const;
+  void                                     set_select_stmt(SelectStmt *stmt);
+  const std::unique_ptr<SelectStmt>       &select_stmt() const;
+  void                                     set_logical_oper(std::unique_ptr<LogicalOperator> &&oper);
+  const std::unique_ptr<LogicalOperator>  &logical_oper();
+  void                                     set_physical_oper(std::unique_ptr<PhysicalOperator> &&oper);
+  const std::unique_ptr<PhysicalOperator> &physical_oper();
+
+private:
+  std::unique_ptr<SelectSqlNode> sql_node_;
+  std::unique_ptr<SelectStmt> stmt_;
+  std::unique_ptr<LogicalOperator> logical_oper_;
+  std::unique_ptr<PhysicalOperator> physical_oper_;
 };

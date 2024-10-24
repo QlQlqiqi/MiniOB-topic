@@ -153,6 +153,8 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         L2_DISTANCE
         COSINE_DISTANCE
         INNER_PRODUCT
+        IN
+        EXISTS
         VECTORS
         QUOTE
 
@@ -210,6 +212,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <inner_join>          inner_join_list
 %type <inner_join_unit>     inner_join_rel
 %type <expression>          expression
+%type <expression>          sub_query_expr
 %type <expression>          group_by_expression_list
 %type <expression_list>     expression_list
 %type <expression_list>     group_by
@@ -728,8 +731,19 @@ expression:
     | MAX LBRACE group_by_expression_list RBRACE {
       $$ = create_aggregate_expression("max", $3, sql_string, &@$);
     }
+    | sub_query_expr {
+      $$ = $1;
+    }
     | '*' {
       $$ = new StarExpr();
+    }
+    ;
+
+sub_query_expr:
+    LBRACE select_stmt RBRACE
+    {
+      $$ = new SubQueryExpr(std::move($2->selection));
+      delete $2;
     }
     ;
 
