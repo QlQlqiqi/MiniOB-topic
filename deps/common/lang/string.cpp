@@ -263,7 +263,7 @@ char *substr(const char *s, int n1, int n2)
 }
 
 /**
- * double to string
+ * Double to string，保留两位小数
  * @param v
  * @return
  */
@@ -278,7 +278,10 @@ string double_to_str(double v)
   if (buf[len - 1] == '.') {
     len--;
   }
-
+  // 特判是否为 -0
+  if (len == 2 && buf[0] == '-' && buf[1] == '0') {
+    return "0";
+  }
   return string(buf, len);
 }
 }  // namespace common
