@@ -335,7 +335,7 @@ ValCmpRes Value::compare(const Value &other) const {
     }
   }
 
-  switch(DataType::type_instance(this->attr_type_)->compare(*left_val, *right_val)){
+  switch(DataType::type_instance(left_val->attr_type_)->compare(*left_val, *right_val)){
     case -1:  return ValCmpRes::LESS;
     case  0:  return ValCmpRes::EQUAL;
     case  1:  return ValCmpRes::GREAT;
