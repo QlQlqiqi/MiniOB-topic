@@ -151,6 +151,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         INNER_PRODUCT
         VECTORS
         QUOTE
+        UNIQUE
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -193,6 +194,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
 %type <bools>               opt_null
+%type <bools>               opt_unique
 %type <value>               insert_value
 %type <value_list>          value_list
 %type <expression>           where
@@ -321,16 +323,27 @@ desc_table_stmt:
     ;
 
 create_index_stmt:    /*create index 语句的语法解析树*/
-    CREATE INDEX ID ON ID LBRACE ID RBRACE
+    CREATE opt_unique INDEX ID ON ID LBRACE ID RBRACE
     {
       $$ = new ParsedSqlNode(SCF_CREATE_INDEX);
       CreateIndexSqlNode &create_index = $$->create_index;
-      create_index.index_name = $3;
-      create_index.relation_name = $5;
-      create_index.attribute_name = $7;
-      free($3);
-      free($5);
-      free($7);
+      create_index.index_name = $4;
+      create_index.relation_name = $6;
+      create_index.attribute_name = $8;
+      create_index.unique = $2;
+      free($4);
+      free($6);
+      free($8);
+    }
+    ;
+opt_unique:
+    /* empty */
+    {
+      $$ = false;
+    }
+    | UNIQUE
+    {
+      $$ = true;
     }
     ;
 

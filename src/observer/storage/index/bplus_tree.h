@@ -89,7 +89,11 @@ private:
 class KeyComparator
 {
 public:
-  void init(AttrType type, int length) { attr_comparator_.init(type, length); }
+  void init(AttrType type, int length, const bool unique = false)
+  {
+    unique_ = unique;
+    attr_comparator_.init(type, length);
+  }
 
   const AttrComparator &attr_comparator() const { return attr_comparator_; }
 
@@ -100,12 +104,18 @@ public:
       return result;
     }
 
+    // 唯一索引不比较
+    if(unique_) {
+      return result;
+    }
+
     const RID *rid1 = (const RID *)(v1 + attr_comparator_.attr_length());
     const RID *rid2 = (const RID *)(v2 + attr_comparator_.attr_length());
     return RID::compare(rid1, rid2);
   }
 
 private:
+  bool unique_;
   AttrComparator attr_comparator_;
 };
 
@@ -142,14 +152,20 @@ private:
 class KeyPrinter
 {
 public:
-  void init(AttrType type, int length) { attr_printer_.init(type, length); }
+  void init(AttrType type, int length, const bool unique = false)
+  {
+    unique_ = unique;
+    attr_printer_.init(type, length);
+  }
 
   const AttrPrinter &attr_printer() const { return attr_printer_; }
+  const bool unique() const { return unique_; }
 
   string operator()(const char *v) const
   {
     stringstream ss;
     ss << "{key:" << attr_printer_(v) << ",";
+    ss << "{unique:" << (unique_ ? "true" : "false") << ",";
 
     const RID *rid = (const RID *)(v + attr_printer_.attr_length());
     ss << "rid:{" << rid->to_string() << "}}";
@@ -157,6 +173,7 @@ public:
   }
 
 private:
+  bool        unique_;
   AttrPrinter attr_printer_;
 };
 
@@ -179,6 +196,7 @@ struct IndexFileHeader
   int32_t  attr_length;        ///< 键值的长度
   int32_t  key_length;         ///< attr length + sizeof(RID)
   AttrType attr_type;          ///< 键值的类型
+  bool unique;                 ///< unique
 
   const string to_string() const
   {
@@ -189,6 +207,7 @@ struct IndexFileHeader
        << "attr_type:" << attr_type_to_string(attr_type) << ","
        << "root_page:" << root_page << ","
        << "internal_max_size:" << internal_max_size << ","
+       << "unique:" << unique << ","
        << "leaf_max_size:" << leaf_max_size << ";";
 
     return ss.str();
@@ -463,7 +482,7 @@ public:
    */
   RC create(LogHandler &log_handler, BufferPoolManager &bpm, const char *file_name, AttrType attr_type, int attr_length,
       int internal_max_size = -1, int leaf_max_size = -1);
-  RC create(LogHandler &log_handler, DiskBufferPool &buffer_pool, AttrType attr_type, int attr_length,
+  RC create(LogHandler &log_handler, DiskBufferPool &buffer_pool, AttrType attr_type, int attr_length, const bool unique = false,
       int internal_max_size = -1, int leaf_max_size = -1);
 
   /**
