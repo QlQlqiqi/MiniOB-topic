@@ -327,11 +327,12 @@ ValCmpRes Value::compare(const Value &other) const {
   if(this->attr_type_ != other.attr_type_){
     if((rc = Value::cast_to(*this, other.attr_type_, cast_val)) == RC::SUCCESS){
       left_val = &cast_val;
-    }
-    if((rc = Value::cast_to(other, this->attr_type_, cast_val)) == RC::SUCCESS){
+    }else if((rc = Value::cast_to(other, this->attr_type_, cast_val)) == RC::SUCCESS){
       right_val = &cast_val;
+    }else{
+      LOG_WARN("cannot compare two value between %s and %s", attr_type_to_string(this->attr_type_), attr_type_to_string(other.attr_type_));
+      return ValCmpRes::CANNOT;
     }
-    return ValCmpRes::CANNOT;
   }
 
   switch(DataType::type_instance(this->attr_type_)->compare(*left_val, *right_val)){

@@ -66,18 +66,23 @@ RC OrderByPhysicalOperator::init() {
       auto& expr = order_by_expressions_[i];
       /*order_by_expression should be FieldExpression*/
       Value a_val, b_val;
-      assert(expr->type() == ExprType::FIELD); 
-      FieldExpr* filed_expr = static_cast<FieldExpr*>(expr.get());
-      filed_expr->get_value(*a, a_val);
-      filed_expr->get_value(*b, b_val);
+      assert(expr->type() == ExprType::FIELD || expr->type() == ExprType::FUNCTION); 
+      Expression* expression = expr.get();
+      expression->get_value(*a, a_val);
+      expression->get_value(*b, b_val);
       auto cmp = a_val.compare(b_val);
       if (cmp == ValCmpRes::EQUAL)
         continue;
-      if (cmp == ValCmpRes::LESS) {
+      else if (cmp == ValCmpRes::LESS) {
         return order_ops_[i] == OrderOp::ASC;
-      }
-      if (cmp == ValCmpRes::GREAT) {
+      } else if (cmp == ValCmpRes::GREAT) {
         return order_ops_[i] == OrderOp::DESC;
+      }else if(cmp == ValCmpRes::NULL_VAL){
+        //if a_val.is_null() and b_val.is_null() should continue
+        if(a_val.is_null() && b_val.is_null()){
+          continue;
+        }
+        return order_ops_[i] == OrderOp::ASC ? a_val.is_null():b_val.is_null(); 
       }
     }
     return false;
