@@ -61,7 +61,7 @@ RC OrderByPhysicalOperator::init() {
 
   assert(order_by_expressions_.size() == order_ops_.size());
 
-  std::sort(tuples_.begin(), tuples_.end(), [this](std::unique_ptr<Tuple>&a, std::unique_ptr<Tuple>&b){
+  std::sort(tuples_.begin(), tuples_.end(), [this](const std::unique_ptr<Tuple>& a, const std::unique_ptr<Tuple>& b){
     for(size_t i = 0; i < order_by_expressions_.size(); i++){
       auto& expr = order_by_expressions_[i];
       /*order_by_expression should be FieldExpression*/
@@ -89,7 +89,8 @@ RC OrderByPhysicalOperator::read_all() {
   RC rc = RC::SUCCESS;
   while ((rc = children_[0]->next()) == RC::SUCCESS) {
     RowTuple* child_tuple_ =static_cast<RowTuple*>(children_[0]->current_tuple());
-    tuples_.emplace_back(child_tuple_->clone());
+    auto clone_tuple_ = child_tuple_->clone();
+    tuples_.emplace_back(std::move(clone_tuple_));
   }
   if (rc != RC::RECORD_EOF) {
     return rc;

@@ -115,12 +115,24 @@ extern int yydebug;
     AVG = 316,                     /* AVG  */
     MAX = 317,                     /* MAX  */
     MIN = 318,                     /* MIN  */
+<<<<<<< HEAD
     NUMBER = 319,                  /* NUMBER  */
     FLOAT = 320,                   /* FLOAT  */
     ID = 321,                      /* ID  */
     SSS = 322,                     /* SSS  */
     DATE_STR = 323,                /* DATE_STR  */
     UMINUS = 324                   /* UMINUS  */
+=======
+    L2_DISTANCE = 319,             /* L2_DISTANCE  */
+    COSINE_DISTANCE = 320,         /* COSINE_DISTANCE  */
+    INNER_PRODUCT = 321,           /* INNER_PRODUCT  */
+    NUMBER = 322,                  /* NUMBER  */
+    FLOAT = 323,                   /* FLOAT  */
+    ID = 324,                      /* ID  */
+    SSS = 325,                     /* SSS  */
+    DATE_STR = 326,                /* DATE_STR  */
+    UMINUS = 327                   /* UMINUS  */
+>>>>>>> acfcd6a (10.24 暂存)
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -129,7 +141,11 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
+<<<<<<< HEAD
 #line 132 "yacc_sql.y"
+=======
+#line 146 "yacc_sql.y"
+>>>>>>> acfcd6a (10.24 暂存)
 
   ParsedSqlNode *                            sql_node;
   Value *                                    value;
@@ -150,7 +166,11 @@ union YYSTYPE
   float                                      floats;
   bool                                       bools;
 
+<<<<<<< HEAD
 #line 154 "yacc_sql.hpp"
+=======
+#line 157 "yacc_sql.hpp"
+>>>>>>> acfcd6a (10.24 暂存)
 
 };
 typedef union YYSTYPE YYSTYPE;
