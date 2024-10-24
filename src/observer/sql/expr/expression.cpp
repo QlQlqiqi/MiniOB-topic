@@ -80,7 +80,7 @@ bool ValueExpr::equal(const Expression &other) const
     return false;
   }
   const auto &other_value_expr = static_cast<const ValueExpr &>(other);
-  return value_.compare(other_value_expr.get_value()) == 0;
+  return value_.compare(other_value_expr.get_value()) == ValCmpRes::EQUAL;
 }
 
 RC ValueExpr::get_value(const Tuple &tuple, Value &value) const
@@ -160,7 +160,7 @@ ComparisonExpr::~ComparisonExpr() {}
 RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &result) const
 {
   RC  rc         = RC::SUCCESS;
-  int cmp_result;
+  ValCmpRes cmp_result = ValCmpRes::CANNOT;
 
   if (comp_ == IS_NULL || comp_ == IS_NOT_NULL) {
     ASSERT(right.is_null(), "right value must be null");
@@ -182,22 +182,22 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
   result         = false;
   switch (comp_) {
     case EQUAL_TO: {
-      result = (0 == cmp_result);
+      result = (ValCmpRes::EQUAL == cmp_result);
     } break;
     case LESS_EQUAL: {
-      result = (cmp_result <= 0);
+      result = (cmp_result == ValCmpRes::LESS) || (cmp_result == ValCmpRes::EQUAL);;
     } break;
     case NOT_EQUAL: {
-      result = (cmp_result != 0);
+      result = (cmp_result == ValCmpRes::GREAT) || (cmp_result == ValCmpRes::LESS);
     } break;
     case LESS_THAN: {
-      result = (cmp_result < 0);
+      result = (cmp_result == ValCmpRes::LESS);
     } break;
     case GREAT_EQUAL: {
-      result = (cmp_result >= 0);
+      result = (cmp_result == ValCmpRes::GREAT) || (cmp_result == ValCmpRes::EQUAL);
     } break;
     case GREAT_THAN: {
-      result = (cmp_result > 0);
+      result = (cmp_result == ValCmpRes::GREAT);
     } break;
     case LIKE_OP:{
       result = str_like(left, right); 

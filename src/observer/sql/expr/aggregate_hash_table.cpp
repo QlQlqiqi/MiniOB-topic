@@ -64,7 +64,7 @@ bool StandardAggregateHashTable::VectorEqual::operator()(const vector<Value> &lh
     return false;
   }
   for (size_t i = 0; i < lhs.size(); ++i) {
-    if (rhs[i].compare(lhs[i]) != 0) {
+    if (rhs[i].compare(lhs[i]) != ValCmpRes::EQUAL) {
       return false;
     }
   }

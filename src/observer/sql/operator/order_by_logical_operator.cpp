@@ -9,27 +9,20 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details. */
 
 //
-// Created by Wangyunlai on 2022/12/07
+// Created by WangYunlai on 2024/05/30.
 //
 
-#pragma once
+#include <memory>
 
-#include "sql/operator/logical_operator.h"
+#include "common/log/log.h"
+#include "sql/operator/order_by_logical_operator.h"
+#include "sql/expr/expression.h"
 
-/**
- * @brief 连接算子
- * @ingroup LogicalOperator
- * @details 连接算子，用于连接两个表。对应的物理算子或者实现，可能有NestedLoopJoin，HashJoin等等。
- */
-class JoinLogicalOperator : public LogicalOperator
+using namespace std;
+
+OrderByLogicalOperator::OrderByLogicalOperator(vector<unique_ptr<Expression>> &&order_by_exprs_,
+                                               vector<OrderOp> &&order_ops_)
 {
-public:
-  JoinLogicalOperator()          = default;
-  virtual ~JoinLogicalOperator() = default;
-
-  LogicalOperatorType type() const override { return LogicalOperatorType::JOIN; }
-
-
-
-private:
-};
+  this->expressions_.swap(order_by_exprs_);
+  this->order_ops_.swap(order_ops_);
+}

@@ -19,7 +19,6 @@ See the Mulan PSL v2 for more details. */
 #include <memory>
 
 #include "common/value.h"
-
 class Expression;
 
 /**
@@ -82,6 +81,49 @@ enum CompOp
 // };
 
 /**
+ * @brief 表示OrderBy 的顺序
+ * @ingroup SQLParser
+ */
+enum class OrderOp{
+  ASC,
+  DESC,
+};
+/**
+ * @brief 描述一个order by语句
+ * @ingroup SQLParser
+ * @details desc table 是查询表结构信息的语句
+ */
+struct OrderBySqlNode
+{
+  std::unique_ptr<Expression> unbound_field;
+  OrderOp order_op;
+};
+
+
+/**
+ * @brief 描述一个inner join on 单元
+ * @ingroup SQLParser
+ */
+struct InnerJoinUnit
+{
+  std::string                   relation;  ///< relation to join
+  std::unique_ptr<Expression>   condition; ///< join conditions
+};
+
+/**
+ * @brief 描述一个inner join on语句
+ * @ingroup SQLParser
+ * @details inner join on 支持连续定义
+ * 一个innner join on 语句由两部分组成，分别是innner join, on
+ * on部分表示连接的条件，innner join部分表示要连接的表。
+ */
+struct InnerJoinSqlNode
+{
+  std::vector<std::string>                   relations;   ///< relations to join
+  std::vector<std::unique_ptr<Expression>>   conditions;  ///< join conditions
+};
+
+/**
  * @brief 描述一个select语句
  * @ingroup SQLParser
  * @details 一个正常的select语句描述起来比这个要复杂很多，这里做了简化。
@@ -97,8 +139,10 @@ struct SelectSqlNode
   std::vector<std::unique_ptr<Expression>> expressions;  ///< 查询的表达式
   std::vector<std::string>                 relations;    ///< 查询的表
   // std::vector<ConditionSqlNode>            conditions;   ///< 查询条件，使用AND串联起来多个条件
-  Expression                              *conditions = nullptr;  ///< 查询条件
-  std::vector<std::unique_ptr<Expression>> group_by;              ///< group by clause
+  std::unique_ptr<Expression>              conditions;  ///< 查询条件
+  std::vector<std::unique_ptr<Expression>> group_by;     ///< group by clause
+  std::vector<std::unique_ptr<OrderBySqlNode>> order_by; ///< order by clause
+  std::unique_ptr<InnerJoinSqlNode>        inner_join;   ///< inner join clause
 };
 
 /**
@@ -233,6 +277,7 @@ struct SetVariableSqlNode
   std::string name;
   Value       value;
 };
+
 
 class ParsedSqlNode;
 

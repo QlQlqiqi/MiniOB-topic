@@ -161,6 +161,7 @@ void Value::set_data(char *data, int length)
   }
 }
 
+
 void Value::set_int(int val)
 {
   reset();
@@ -312,87 +313,53 @@ string Value::to_string() const
   return res;
 }
 
-int Value::compare(const Value &other) const { return DataType::type_instance(this->attr_type_)->compare(*this, other); }
+ValCmpRes Value::compare(const Value &other) const {
+  if(this->attr_type_ == AttrType::NULLS || other.attr_type_ == AttrType::NULLS){
+    return ValCmpRes::NULL_VAL;
+  }
+  
+  //转换逻辑
+  Value cast_val;
+  RC rc = RC::SUCCESS;
+  const Value* left_val = this;
+  const Value* right_val = &other;
+
+  if(this->attr_type_ != other.attr_type_){
+    if((rc = Value::cast_to(*this, other.attr_type_, cast_val)) == RC::SUCCESS){
+      left_val = &cast_val;
+    }else if((rc = Value::cast_to(other, this->attr_type_, cast_val)) == RC::SUCCESS){
+      right_val = &cast_val;
+    }else{
+      LOG_WARN("cannot compare two value between %s and %s", attr_type_to_string(this->attr_type_), attr_type_to_string(other.attr_type_));
+      return ValCmpRes::CANNOT;
+    }
+  }
+
+  switch(DataType::type_instance(left_val->attr_type_)->compare(*left_val, *right_val)){
+    case -1:  return ValCmpRes::LESS;
+    case  0:  return ValCmpRes::EQUAL;
+    case  1:  return ValCmpRes::GREAT;
+    default:  return ValCmpRes::CANNOT;
+  }
+}
 
 int Value::get_int() const
 {
-  switch (attr_type_) {
-    case AttrType::CHARS: {
-      try {
-        return (int)(std::stol(value_.pointer_value_));
-      } catch (exception const &ex) {
-        LOG_TRACE("failed to convert string to number. s=%s, ex=%s", value_.pointer_value_, ex.what());
-        return 0;
-      }
-    }
-    case AttrType::INTS: {
-      return value_.int_value_;
-    }
-    case AttrType::FLOATS: {
-      return (int)(value_.float_value_);
-    }
-    case AttrType::BOOLEANS: {
-      return (int)(value_.bool_value_);
-    }
-    case AttrType::DATES: {
-      return (int)(value_.int_value_);
-    }
-    default: {
-      LOG_WARN("unknown data type. type=%d", attr_type_);
-      return 0;
-    }
-  }
-  return 0;
+  int val = 0;
+  get_int(val);
+  return val;
 }
 
 float Value::get_float() const
 {
-  switch (attr_type_) {
-    case AttrType::CHARS: {
-      try {
-        return std::stof(value_.pointer_value_);
-      } catch (exception const &ex) {
-        LOG_TRACE("failed to convert string to float. s=%s, ex=%s", value_.pointer_value_, ex.what());
-        return 0.0;
-      }
-    } break;
-    case AttrType::INTS: {
-      return float(value_.int_value_);
-    } break;
-    case AttrType::FLOATS: {
-      return value_.float_value_;
-    } break;
-    case AttrType::DATES: {
-      return float(value_.int_value_);
-    } break;
-    case AttrType::BOOLEANS: {
-      return float(value_.bool_value_);
-    } break;
-    default: {
-      LOG_WARN("unknown data type. type=%d", attr_type_);
-      return 0;
-    }
-  }
-  return 0;
+  float val = 0.0;
+  get_float(val);
+  return val;
 }
 common::DateTime Value::get_date()  const{
-  switch (attr_type_) {
-    case AttrType::CHARS: 
-    case AttrType::INTS: 
-    case AttrType::FLOATS: 
-    case AttrType::BOOLEANS: {
-      LOG_TRACE("the value type is not date.");
-      return common::DateTime();
-    }
-    case AttrType::DATES: {
-      return value_.date_time_value_;
-    }
-    default: {
-      LOG_WARN("unknown data type. type=%d", attr_type_);
-      return common::DateTime();
-    }
-  }
-  return common::DateTime();
+  common::DateTime date;
+  get_date(date);
+  return date;
 }
 
 string Value::get_string() const { return this->to_string(); }
@@ -401,40 +368,176 @@ bool Value::get_boolean() const
 {
   switch (attr_type_) {
     case AttrType::CHARS: {
-      try {
-        float val = std::stof(value_.pointer_value_);
-        if (val >= EPSILON || val <= -EPSILON) {
-          return true;
-        }
-
-        int int_val = std::stol(value_.pointer_value_);
-        if (int_val != 0) {
-          return true;
-        }
-
-        return value_.pointer_value_ != nullptr;
-      } catch (exception const &ex) {
-        LOG_TRACE("failed to convert string to float or integer. s=%s, ex=%s", value_.pointer_value_, ex.what());
-        return value_.pointer_value_ != nullptr;
+      std::string str_value(value_.pointer_value_);
+      std::transform(str_value.begin(), str_value.end(), str_value.begin(), ::tolower);
+      if (str_value == "true" || str_value == "1") {
+        return true;
+      } else if (str_value == "false" || str_value == "0") {
+        return false;
+      } else {
+        LOG_TRACE("failed to convert string to boolean. s=%s", value_.pointer_value_);
+        return false; // Indicating an error
       }
-    } break;
+    }
     case AttrType::INTS: {
       return value_.int_value_ != 0;
-    } break;
+    }
     case AttrType::FLOATS: {
-      float val = value_.float_value_;
-      return val >= EPSILON || val <= -EPSILON;
-    } break;
-    case AttrType::DATES: {
-      return value_.int_value_ != 0;
-    } break;
+      return value_.float_value_ != 0.0f;
+    }
     case AttrType::BOOLEANS: {
       return value_.bool_value_;
-    } break;
+    }
+    case AttrType::DATES: {
+      LOG_WARN("cannot convert date to boolean. type=%d", attr_type_);
+      return false; // Indicating an error
+    }
     default: {
       LOG_WARN("unknown data type. type=%d", attr_type_);
-      return false;
+      return false; // Indicating an error
     }
   }
-  return false;
+}
+
+
+
+RC Value::get_int(int &val) const { 
+  switch (attr_type_) {
+    case AttrType::CHARS: {
+        std::stringstream ss(value_.pointer_value_);
+        ss >> val;
+        if(ss.fail()){
+          LOG_TRACE("failed to convert string to int. s=%s", value_.pointer_value_);
+          return RC::INTERNAL;
+        }
+        if(ss.peek() != EOF){
+          LOG_TRACE("Partial int conversion: %s", value_.pointer_value_);
+          return RC::INTERNAL;
+        }
+        return RC::SUCCESS;
+    }
+    case AttrType::INTS: {
+      val = value_.int_value_;
+      return RC::SUCCESS;
+    }
+    case AttrType::FLOATS: {
+      val = (int)(value_.float_value_);
+      return RC::SUCCESS;
+    }
+    case AttrType::BOOLEANS: {
+      val = (int)(value_.bool_value_);
+      return RC::SUCCESS;
+    }
+    case AttrType::DATES: {
+      val = (int)(value_.date_time_value_.to_time_t());
+    }
+    default: {
+      LOG_WARN("unknown data type. type=%d", attr_type_);
+      return RC::UNSUPPORTED;
+    }
+  }
+  return RC::SUCCESS;
+}
+
+RC Value::get_float(float &val) const { 
+  switch (attr_type_) {
+    case AttrType::CHARS: {
+      std::stringstream ss(value_.pointer_value_);
+      ss >> val;
+      if(ss.fail()){
+        LOG_TRACE("failed to convert string to float. s=%s", value_.pointer_value_);
+        return RC::INTERNAL;
+      }
+      if(ss.peek() != EOF){
+        LOG_TRACE("Partial float conversion: %s", value_.pointer_value_);
+        return RC::INTERNAL;
+      }
+      return RC::SUCCESS;
+    }
+    case AttrType::INTS: {
+      val = float(value_.int_value_);
+      return RC::SUCCESS;
+    }
+    case AttrType::FLOATS: {
+      val = value_.float_value_;
+      return RC::SUCCESS;
+    }
+    case AttrType::BOOLEANS: {
+      val = float(value_.bool_value_);
+      return RC::SUCCESS;
+    }
+    case AttrType::DATES: {
+      val = float(value_.date_time_value_.to_time_t());
+      return RC::SUCCESS;
+    }
+    default: {
+      LOG_WARN("unknown data type. type=%d", attr_type_);
+      return RC::UNSUPPORTED;
+    }
+  }
+  return RC::SUCCESS;
+}
+
+RC Value::get_date(common::DateTime &val) const {
+    switch (attr_type_) {
+    case AttrType::CHARS: 
+    case AttrType::INTS: 
+    case AttrType::FLOATS: 
+    case AttrType::BOOLEANS: {
+      LOG_TRACE("the value type is not date.");
+      return RC::UNSUPPORTED;
+    }
+    case AttrType::DATES: {
+      val = value_.date_time_value_;
+      return RC::SUCCESS;
+    }
+    default: {
+      LOG_WARN("unknown data type. type=%d", attr_type_);
+      return RC::UNSUPPORTED;
+    }
+  }
+  return RC::SUCCESS;
+}
+
+RC Value::get_string(string &val) const { 
+  return DataType::type_instance(this->attr_type_)->to_string(*this, val);
+}
+
+RC Value::get_boolean(bool &val) const {
+  switch (attr_type_) {
+    case AttrType::CHARS: {
+      std::string str_value(value_.pointer_value_);
+      std::transform(str_value.begin(), str_value.end(), str_value.begin(), ::tolower);
+      if (str_value == "true" || str_value == "1") {
+        val = true;
+      } else if (str_value == "false" || str_value == "0") {
+        val = false;
+      } else {
+        LOG_TRACE("failed to convert string to boolean. s=%s", value_.pointer_value_);
+        return RC::INTERNAL;
+      }
+      return RC::SUCCESS;
+    }
+    case AttrType::INTS: {
+      LOG_WARN("not support int convert to boolean");
+      return RC::UNSUPPORTED;
+    }
+    case AttrType::FLOATS: {
+      LOG_WARN("not support float convert to boolean");
+      return RC::UNSUPPORTED;
+    }
+    case AttrType::BOOLEANS: {
+      val = value_.bool_value_;
+      return RC::SUCCESS;
+    }
+    case AttrType::DATES: {
+      LOG_WARN("cannot convert date to boolean. type=%d", attr_type_);
+      return RC::UNSUPPORTED;
+    }
+    default: {
+      LOG_WARN("unknown data type. type=%d", attr_type_);
+      return RC::UNSUPPORTED;
+    }
+  }
+  return RC::SUCCESS;
 }

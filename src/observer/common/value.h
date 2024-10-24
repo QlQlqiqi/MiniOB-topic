@@ -21,6 +21,13 @@ See the Mulan PSL v2 for more details. */
 #include "common/time/datetime.h"
 #include "cassert"
 
+enum class ValCmpRes{
+  LESS = -1,
+  EQUAL = 0,
+  GREAT = 1,
+  CANNOT = INT_MAX,
+  NULL_VAL = INT_MIN,
+};
 /**
  * @brief 属性的值
  * @ingroup DataType
@@ -105,7 +112,13 @@ public:
 
   string to_string() const;
 
-  int compare(const Value &other) const;
+/**
+ * @brief val 的 compare 方法
+ * @return -1: less than other; 0 equal to other; 1 great than other; 
+ *        INT_MAX: cannot compare(include other value is null) or unsupport
+ *        INT_MIN: this value is null
+ */
+  ValCmpRes compare(const Value &other) const;
 
   const char *data() const;
 
@@ -122,6 +135,18 @@ public:
   common::DateTime   get_date()  const;
   string get_string() const;
   bool   get_boolean() const;
+
+
+  /**
+   * 获取对应的值
+   * 返回 RC::SUCCESS 表示成功获取
+   * 如果当前类型类型与期望类型不符，执行转换，转换失败，返回 RC::INTERNEL 错误
+   */
+  RC    get_int(int& val) const;
+  RC    get_float(float& val) const;
+  RC    get_date(common::DateTime& val)  const;
+  RC    get_string(string& val) const;
+  RC    get_boolean(bool& val) const;
 
 private:
   void set_int(int val);

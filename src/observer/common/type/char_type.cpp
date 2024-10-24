@@ -50,8 +50,13 @@ RC CharType::cast_to(const Value &val, AttrType type, Value &result) const
     }
     case AttrType::NULLS: {
       result.set_null();
-      break;
-    }
+    } break;
+    case AttrType::INTS:{
+        result.set_int(val.get_int());
+    } break;
+    case AttrType::FLOATS:{
+        result.set_float(val.get_float());
+    } break;
     default: {
       LOG_WARN("failed to cast to: from %s to %s", attr_type_to_string(attr_type_), attr_type_to_string(type));
       return RC::UNSUPPORTED;

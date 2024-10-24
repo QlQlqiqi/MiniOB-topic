@@ -83,7 +83,7 @@ RC AvgAggregator::evaluate(Value &result)
   {
     if (RC rc = Value::cast_to(sum, AttrType::FLOATS, float_sum); OB_FAIL(rc))
     {
-      LOG_WARN("failed to cast to float from a value(%s) with attr_type=%d", value_.to_string(), value_.attr_type());
+      LOG_WARN("failed to cast to float from a value(%s) with attr_type=%d", value_.to_string().c_str(), value_.attr_type());
       return rc;
     }
   }
@@ -107,7 +107,7 @@ RC MinAggregator::accumulate(const Value &value)
   ASSERT(value.attr_type() == value_.attr_type(), "type mismatch. value type: %s, value_.type: %s", 
         attr_type_to_string(value.attr_type()), attr_type_to_string(value_.attr_type()));
   
-  if (value_.compare(value) > 0)
+  if (value_.compare(value) == ValCmpRes::GREAT)
   {
     value_ = value;
   }
@@ -124,7 +124,7 @@ RC MaxAggregator::accumulate(const Value &value)
   ASSERT(value.attr_type() == value_.attr_type(), "type mismatch. value type: %s, value_.type: %s", 
         attr_type_to_string(value.attr_type()), attr_type_to_string(value_.attr_type()));
   
-  if (value_.compare(value) < 0)
+  if (value_.compare(value) == ValCmpRes::LESS)
   {
     value_ = value;
   }

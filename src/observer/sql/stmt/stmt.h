@@ -51,6 +51,7 @@ class FilterStmt;
   DEFINE_ENUM_ITEM(EXIT)         \
   DEFINE_ENUM_ITEM(EXPLAIN)      \
   DEFINE_ENUM_ITEM(PREDICATE)    \
+  DEFINE_ENUM_ITEM(ORDERBY)      \
   DEFINE_ENUM_ITEM(SET_VARIABLE)
 
 enum class StmtType
@@ -88,7 +89,6 @@ public:
   virtual StmtType type() const = 0;
 
 public:
-  static RC bind_filter_stmt(Db *db, const std::vector<std::string> &relations, FilterStmt *filter_stmt);
   static RC create_stmt(Db *db, ParsedSqlNode &sql_node, Stmt *&stmt);
 
 private:
