@@ -349,6 +349,19 @@ compare:
  }
 }
 
+ValCmpRes Value::compare_without_cast(const Value &other) const{
+  if(this->attr_type_ == AttrType::NULLS || other.attr_type_ == AttrType::NULLS){
+    return ValCmpRes::NULL_VAL;
+  }
+
+  switch(DataType::type_instance(this->attr_type_)->compare(*this, other)){
+    case -1:  return ValCmpRes::LESS;
+    case  0:  return ValCmpRes::EQUAL;
+    case  1:  return ValCmpRes::GREAT;
+    default:  return ValCmpRes::CANNOT;
+  }
+}
+
 int Value::get_int() const
 {
   int val = 0;

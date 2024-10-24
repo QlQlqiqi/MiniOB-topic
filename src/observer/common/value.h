@@ -120,6 +120,11 @@ public:
  */
   ValCmpRes compare(const Value &other) const;
 
+  /**
+   * 没有转换操作的 compare 
+   */
+  ValCmpRes compare_without_cast(const Value &other) const;
+
   const char *data() const;
 
   int      length() const { return length_; }

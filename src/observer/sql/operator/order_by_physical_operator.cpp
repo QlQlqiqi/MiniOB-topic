@@ -70,7 +70,7 @@ RC OrderByPhysicalOperator::init() {
       Expression* expression = expr.get();
       expression->get_value(*a, a_val);
       expression->get_value(*b, b_val);
-      auto cmp = a_val.compare(b_val);
+      auto cmp = a_val.compare_without_cast(b_val);
       if (cmp == ValCmpRes::EQUAL)
         continue;
       else if (cmp == ValCmpRes::LESS) {
