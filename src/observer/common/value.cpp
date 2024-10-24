@@ -325,22 +325,28 @@ ValCmpRes Value::compare(const Value &other) const {
   const Value* right_val = &other;
 
   if(this->attr_type_ != other.attr_type_){
-    if((rc = Value::cast_to(*this, other.attr_type_, cast_val)) == RC::SUCCESS){
-      left_val = &cast_val;
-    }else if((rc = Value::cast_to(other, this->attr_type_, cast_val)) == RC::SUCCESS){
+    if(this->attr_type_ != AttrType::FLOATS || other.attr_type_ != AttrType::INTS){
+      if((rc = Value::cast_to(*this, other.attr_type_, cast_val)) == RC::SUCCESS){
+        left_val = &cast_val;
+        goto compare;
+      }
+    }
+    if((rc = Value::cast_to(other, this->attr_type_, cast_val)) == RC::SUCCESS){
       right_val = &cast_val;
+      goto compare;
     }else{
       LOG_WARN("cannot compare two value between %s and %s", attr_type_to_string(this->attr_type_), attr_type_to_string(other.attr_type_));
       return ValCmpRes::CANNOT;
     }
   }
 
+compare:
   switch(DataType::type_instance(left_val->attr_type_)->compare(*left_val, *right_val)){
     case -1:  return ValCmpRes::LESS;
     case  0:  return ValCmpRes::EQUAL;
     case  1:  return ValCmpRes::GREAT;
     default:  return ValCmpRes::CANNOT;
-  }
+ }
 }
 
 int Value::get_int() const
