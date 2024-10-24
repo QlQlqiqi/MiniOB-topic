@@ -339,7 +339,7 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
 {
   bool is_null = false;
   // 如果这个数据是 null，那么 field 必须为 nullable。
-  if (value.attr_type() == AttrType::NULLS) {
+  if (value.is_null()) {
     if(!field->nullable()) {
       LOG_WARN("failed to insert null record in not null field, field name:%s", field->name());
       return RC::UNSUPPORTED;
@@ -347,9 +347,19 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
     is_null = true;
   }
 
+  // 如果是 vector，那么其 length 应该与 field 的相同，null 则不考
+  if (!is_null) {
+    if (field->type() == AttrType::VECTORS) {
+      if (field->len() - field->nullable() != value.length()) {
+        LOG_WARN("field's length %d should be the same as value's %d", field->len() - field->nullable(),value.length());
+        return RC::UNSUPPORTED;
+      }
+    }
+  }
+
   size_t       copy_len = field->len();
   const size_t data_len = value.length();
-  if (field->type() == AttrType::CHARS) {
+  if (field->type() == AttrType::CHARS || field->type() == AttrType::VECTORS) {
     if (copy_len > data_len) {
       copy_len = data_len + 1;
     }

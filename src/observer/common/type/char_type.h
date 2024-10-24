@@ -30,6 +30,7 @@ public:
 
   int cast_cost(AttrType type) override;
   RC cast_to(const Value &val, AttrType type, Value &result) const override;
+  RC char2vector(const Value &val, Value &result) const;
 
   RC to_string(const Value &val, string &result) const override;
 };

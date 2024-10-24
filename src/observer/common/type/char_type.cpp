@@ -9,6 +9,7 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details. */
 
 #include "common/lang/comparator.h"
+#include "common/lang/string.h"
 #include "common/log/log.h"
 #include "common/type/char_type.h"
 #include "common/value.h"
@@ -28,7 +29,8 @@ RC CharType::set_value_from_str(Value &val, const string &data) const
 
 int CharType::cast_cost(AttrType type)
 {
-  if (type == AttrType::CHARS) {
+  // 如果内容形如 '[num1, num2]'，可以被转为 vector
+  if (type == AttrType::CHARS || type == AttrType::VECTORS) {
     return 0;
   }
   return INT32_MAX;
@@ -42,6 +44,10 @@ RC CharType::cast_to(const Value &val, AttrType type, Value &result) const
       result = val;
       break;
     }
+    case AttrType::VECTORS: {
+      return char2vector(val, result);
+      break;
+    }
     case AttrType::NULLS: {
       result.set_null();
       break;
@@ -51,6 +57,37 @@ RC CharType::cast_to(const Value &val, AttrType type, Value &result) const
       return RC::UNSUPPORTED;
     }
   }
+  return RC::SUCCESS;
+}
+
+RC CharType::char2vector(const Value &val, Value &result) const
+{
+  ASSERT(val.attr_type() == AttrType::CHARS, "val should be chars, but now is %s", attr_type_to_string(attr_type_));
+
+  // 因为形如 [1.1, 2]，所以长度至少 2
+  auto len = val.length();
+  if (len < 2) {
+    LOG_WARN("length of val %d should be >= 2", len);
+    return RC::UNSUPPORTED;
+  }
+  auto str = val.data();
+  if (str[0] != '[' || str[len - 1] != ']') {
+    LOG_WARN("invalid format: %s", str);
+    return RC::UNSUPPORTED;
+  }
+  str++;
+  len -= 2;
+  std::vector<std::string> vec;
+  common::split_string(str, ",", vec);
+  std::vector<double> nums;
+  nums.reserve(vec.size());
+  for (auto &item : vec) {
+    double num;
+    sscanf(item.c_str(), "%lf", &num);
+    nums.emplace_back(num);
+  }
+  result = Value(nums);
+
   return RC::SUCCESS;
 }
 

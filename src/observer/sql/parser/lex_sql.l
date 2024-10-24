@@ -129,12 +129,16 @@ SUM                                     RETURN_TOKEN(SUM);
 AVG                                     RETURN_TOKEN(AVG);
 MAX                                     RETURN_TOKEN(MAX);
 MIN                                     RETURN_TOKEN(MIN);
+l2_distance                             RETURN_TOKEN(L2_DISTANCE);
+cosine_distance                         RETURN_TOKEN(COSINE_DISTANCE);
+inner_product                           RETURN_TOKEN(INNER_PRODUCT);
 NULL                                    RETURN_TOKEN(NULL_T);
 NULLABLE                                RETURN_TOKEN(NULL_T);
 {ID}                                    yylval->string=strdup(yytext); RETURN_TOKEN(ID);
 "("                                     RETURN_TOKEN(LBRACE);
 ")"                                     RETURN_TOKEN(RBRACE);
 
+{QUOTE}                                 RETURN_TOKEN(QUOTE);
 ","                                     RETURN_TOKEN(COMMA);
 "="                                     RETURN_TOKEN(EQ);
 "<="                                    RETURN_TOKEN(LE);

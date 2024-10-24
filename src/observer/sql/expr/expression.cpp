@@ -13,6 +13,7 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/expr/expression.h"
+#include "common/type/vector_type.h"
 #include "sql/expr/tuple.h"
 #include "sql/expr/arithmetic_operator.hpp"
 #include <regex>
@@ -167,7 +168,7 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
     return rc;
   }
 
-  // TODO(qiqi): 需要判断 left 和 value 如果不能比较应该如何处理，
+  // 需要判断 left 和 value 如果不能比较应该如何处理，
   // 比如：1 < null、1 < bool，默认是为 false，这里目前只是对 null 进行
   // 特判，事实上需要处理所有不能比较的类型，让结果为 false
   if(left.is_null() || right.is_null()) {
@@ -372,18 +373,37 @@ bool ArithmeticExpr::equal(const Expression &other) const
 }
 AttrType ArithmeticExpr::value_type() const
 {
-  // 任何数和 null 比较均为 null
-  if ((left_ && left_->value_type() == AttrType::NULLS) || (right_ && right_->value_type() == AttrType::NULLS)) {
-    return AttrType::NULLS;
-  }
-
+  // 负数
   if (!right_) {
     return left_->value_type();
   }
 
-  if (left_->value_type() == AttrType::INTS && right_->value_type() == AttrType::INTS &&
-      arithmetic_type_ != Type::DIV) {
+  // 任何数和 null 比较均为 null
+  if ((left_->value_type() == AttrType::NULLS) || (right_->value_type() == AttrType::NULLS)) {
+    return AttrType::NULLS;
+  }
+
+  // 数字之间比较
+  if ((left_->value_type() == AttrType::INTS || left_->value_type() == AttrType::FLOATS) &&
+      (right_->value_type() == AttrType::INTS || right_->value_type() == AttrType::FLOATS)) {
+    if (left_->value_type() == AttrType::FLOATS || right_->value_type() == AttrType::FLOATS) {
+      return AttrType::FLOATS;
+    }
+    if (arithmetic_type_ == Type::DIV) {
+      return AttrType::FLOATS;
+    }
     return AttrType::INTS;
+  }
+
+  // 如果 type 相同，直接返回
+  if (left_->value_type() == right_->value_type()) {
+    return left_->value_type();
+  }
+
+  // vector 和 chars 比较的时候，转为 chars 比较
+  if ((left_->value_type() == AttrType::VECTORS && right_->value_type() == AttrType::CHARS) ||
+      (left_->value_type() == AttrType::CHARS && right_->value_type() == AttrType::VECTORS)) {
+    return AttrType::VECTORS;
   }
 
   return AttrType::FLOATS;
@@ -396,29 +416,29 @@ RC ArithmeticExpr::calc_value(const Value &left_value, const Value &right_value,
   // 如果 left_value 和 right_value 有一个是 nulls，则结果为 null
   if (left_value.attr_type() == AttrType::NULLS || right_value.attr_type() == AttrType::NULLS) {
     value.set_type(AttrType::NULLS);
-  } else {
-    value.set_type(value_type());
+    return rc;
   }
+  value.set_type(value_type());
 
   switch (arithmetic_type_) {
     case Type::ADD: {
-      Value::add(left_value, right_value, value);
+      rc = Value::add(left_value, right_value, value);
     } break;
 
     case Type::SUB: {
-      Value::subtract(left_value, right_value, value);
+      rc = Value::subtract(left_value, right_value, value);
     } break;
 
     case Type::MUL: {
-      Value::multiply(left_value, right_value, value);
+      rc = Value::multiply(left_value, right_value, value);
     } break;
 
     case Type::DIV: {
-      Value::divide(left_value, right_value, value);
+      rc = Value::divide(left_value, right_value, value);
     } break;
 
     case Type::NEGATIVE: {
-      Value::negative(left_value, value);
+      rc = Value::negative(left_value, value);
     } break;
 
     default: {
@@ -697,6 +717,151 @@ RC AggregateExpr::type_from_string(const char *type_str, AggregateExpr::Type &ty
     type = Type::MIN;
   } else {
     rc = RC::INVALID_ARGUMENT;
+  }
+  return rc;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+FunctionExpr::FunctionExpr(Type type, Expression *left, Expression *right)
+    : function_type_(type), left_(left), right_(right)
+{}
+
+FunctionExpr::FunctionExpr(Type type, std::unique_ptr<Expression> left, std::unique_ptr<Expression> right)
+    : function_type_(type), left_(std::move(left)), right_(std::move(right))
+{}
+
+bool FunctionExpr::equal(const Expression &other) const
+{
+  if (this == &other) {
+    return true;
+  }
+  if (other.type() != type()) {
+    return false;
+  }
+  const FunctionExpr &func_expr = static_cast<const FunctionExpr &>(other);
+  return function_type() == func_expr.function_type() && value_length() == func_expr.value_length() &&
+         left_->equal(*func_expr.left()) && right_->equal(*func_expr.right());
+}
+
+RC FunctionExpr::try_get_value(Value &value) const
+{
+  RC rc = RC::SUCCESS;
+
+  Value left_value;
+  Value right_value;
+
+  rc = left_->try_get_value(left_value);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to try get value of left expression. rc=%s", strrc(rc));
+    return rc;
+  }
+  if (right_) {
+    rc = right_->try_get_value(right_value);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to try get value of right expression. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+  switch (function_type_) {
+    case Type::L2_DISTANCE: rc = calc_l2_distance(left_value, right_value, value); break;
+    case Type::COSINE_DISTANCE: rc = calc_cosine_distance(left_value, right_value, value); break;
+    case Type::INNER_PRODUCT: rc = calc_inner_product(left_value, right_value, value); break;
+  }
+  return rc;
+}
+
+RC FunctionExpr::get_value(const Tuple &tuple, Value &value) const
+{
+  RC rc = RC::SUCCESS;
+
+  Value left_value;
+  Value right_value;
+
+  rc = left_->get_value(tuple, left_value);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
+    return rc;
+  }
+  if (right_) {
+    rc = right_->get_value(tuple, right_value);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to get value of right expression. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+  // 检查两个 vector 是否可以计算
+  Value tmp1 = left_value;
+  Value tmp2 = right_value;
+  if (OB_FAIL(rc = reinterpret_cast<const VectorType *>(DataType::type_instance(AttrType::CHARS))
+                       ->check(tmp1, tmp2, left_value, right_value))) {
+    return rc;
+  }
+  switch (function_type_) {
+    case Type::L2_DISTANCE: rc = calc_l2_distance(left_value, right_value, value); break;
+    case Type::COSINE_DISTANCE: rc = calc_cosine_distance(left_value, right_value, value); break;
+    case Type::INNER_PRODUCT: rc = calc_inner_product(left_value, right_value, value); break;
+  }
+  return rc;
+}
+
+RC FunctionExpr::calc_l2_distance(const Value &left, const Value &right, Value &result) const
+{
+  auto   l   = reinterpret_cast<const double *>(left.data());
+  auto   r   = reinterpret_cast<const double *>(right.data());
+  int    len = left.length() / sizeof(double);
+  double ans = 0;
+  for (int i = 0; i < len; i++) {
+    ans += (l[i] - r[i]) * (l[i] - r[i]);
+  }
+  ans    = std::sqrt(ans);
+  result = Value(static_cast<float>(ans));
+  return RC::SUCCESS;
+}
+
+RC FunctionExpr::calc_cosine_distance(const Value &left, const Value &right, Value &result) const
+{
+  auto   l    = reinterpret_cast<const double *>(left.data());
+  auto   r    = reinterpret_cast<const double *>(right.data());
+  int    len  = left.length() / sizeof(double);
+  double ans1 = 0;
+  double ans2 = 0;
+  double ans3 = 0;
+  for (int i = 0; i < len; i++) {
+    ans1 += l[i] * r[i];
+    ans2 += l[i] * l[i];
+    ans3 += r[i] * r[i];
+  }
+  if (ans2 == 0 || ans3 == 0) {
+    ans1 = 1;
+  } else {
+    ans1 = 1 - ans1 / std::sqrt(ans2) / std::sqrt(ans3);
+  }
+  result = Value(static_cast<float>(ans1));
+  return RC::SUCCESS;
+}
+
+RC FunctionExpr::calc_inner_product(const Value &left, const Value &right, Value &result) const
+{
+  auto   l   = reinterpret_cast<const double *>(left.data());
+  auto   r   = reinterpret_cast<const double *>(right.data());
+  int    len = left.length() / sizeof(double);
+  double ans = 0;
+  for (int i = 0; i < len; i++) {
+    ans += l[i] * r[i];
+  }
+  result = Value(static_cast<float>(ans));
+  return RC::SUCCESS;
+}
+
+RC FunctionExpr::type_from_string(const char *type_str, FunctionExpr::Type &type)
+{
+  RC rc = RC::SUCCESS;
+  if (0 == strcasecmp(type_str, "l2_distance")) {
+    type = Type::L2_DISTANCE;
+  } else if (0 == strcasecmp(type_str, "cosine_distance")) {
+    type = Type::COSINE_DISTANCE;
+  } else if (0 == strcasecmp(type_str, "inner_product")) {
+    type = Type::INNER_PRODUCT;
   }
   return rc;
 }

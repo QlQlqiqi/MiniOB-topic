@@ -19,14 +19,29 @@ See the Mulan PSL v2 for more details. */
 class VectorType : public DataType
 {
 public:
+  enum VectorOp
+  {
+    VECTOR_ADD,
+    VECTOR_SUB,
+    VECTOR_MULTI,
+    VECTOR_DIV,
+  };
+
   VectorType() : DataType(AttrType::VECTORS) {}
-  virtual ~VectorType() {}
+  virtual ~VectorType() = default;
 
-  int compare(const Value &left, const Value &right) const override { return INT32_MAX; }
+  int compare(const Value &left, const Value &right) const override;
+  // 如果 left 和 right 为 chars，那么将其转为 vector，填充在 result
+  RC check(const Value &left, const Value &right, Value &result1, Value &result2) const;
 
-  RC add(const Value &left, const Value &right, Value &result) const override { return RC::UNIMPLEMENTED; }
-  RC subtract(const Value &left, const Value &right, Value &result) const override { return RC::UNIMPLEMENTED; }
-  RC multiply(const Value &left, const Value &right, Value &result) const override { return RC::UNIMPLEMENTED; }
+  void compute(const VectorOp &op, const double *l, const double *r, const size_t &sz, Value &result) const;
+  RC add(const Value &left, const Value &right, Value &result) const override;
+  RC subtract(const Value &left, const Value &right, Value &result) const override;
+  RC multiply(const Value &left, const Value &right, Value &result) const override;
+  RC divide(const Value &left, const Value &right, Value &result) const override;
 
-  RC to_string(const Value &val, string &result) const override { return RC::UNIMPLEMENTED; }
+  int cast_cost(AttrType type) override;
+  RC cast_to(const Value &val, AttrType type, Value &result) const override;
+
+  RC to_string(const Value &val, string &result) const override;
 };

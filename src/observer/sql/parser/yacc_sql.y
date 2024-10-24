@@ -53,6 +53,27 @@ UnboundAggregateExpr *create_aggregate_expression(const char* type,
   return expr;
 }
 
+Expression *create_function_expression(const FunctionExpr::Type type,
+                                       const char *sql_string,
+                                       Expression *left,
+                                       Expression *right,
+                                       YYLTYPE *llocp)
+{
+  Expression *expr = new FunctionExpr(type, left, right);
+  expr->set_name(token_name(sql_string, llocp));
+  return expr;
+}
+
+Value *vec2val(const char *sql_string, YYLTYPE *llocp)
+{
+  auto str = token_name(sql_string, llocp);
+  std::cout << str << std::endl;
+  auto tmp = Value(str.c_str());
+  auto result = new Value();
+  DataType::type_instance(AttrType::CHARS)->cast_to(tmp, AttrType::VECTORS, *result);
+  return result;
+}
+
 %}
 
 %define api.pure full
@@ -125,6 +146,11 @@ UnboundAggregateExpr *create_aggregate_expression(const char* type,
         AVG
         MAX
         MIN
+        L2_DISTANCE
+        COSINE_DISTANCE
+        INNER_PRODUCT
+        VECTORS
+        QUOTE
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -143,6 +169,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char* type,
   int                                        number;
   float                                      floats;
   bool                                       bools;
+  std::vector<double> *                      double_list;
+  double                                     float_number;
 }
 
 %token <number> NUMBER
@@ -153,6 +181,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char* type,
 //非终结符
 
 /** type 定义了各种解析后的结果输出的是什么类型。类型对应了 union 中的定义的成员变量名称 **/
+%type <float_number>       float_number
+%type <double_list>         double_list
 %type <number>              type
 %type <expression>          condition
 %type <value>               value
@@ -360,8 +390,13 @@ attr_def:
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
-      // $$->length = $4;
-      $$->length = $4 + ($6 == true);
+      $$->length = $6 == true;
+      // 如果是 vector，那么这里的 length 代表的是数量
+      if($2 == static_cast<int>(AttrType::VECTORS)) {
+        $$->length += $4 * sizeof(double);
+      } else {
+        $$->length += $4;
+      }
       $$->nullable = $6;
       free($1);
     }
@@ -370,7 +405,7 @@ attr_def:
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
-      // $$->length = 4;
+      // 这块是 4 是因为 char 和 vector 需要用 ()
       $$->length = 4 + ($3 == true);
       $$->nullable = $3;
       free($1);
@@ -469,6 +504,10 @@ value:
       }
 
     }
+    | '[' double_list ']'
+    {
+      $$ = vec2val(sql_string, &@$);
+    }
     |SSS {
       char *tmp = common::substr($1,1,strlen($1)-2);
       $$ = new Value(tmp);
@@ -490,7 +529,25 @@ storage_format:
       $$ = $4;
     }
     ;
-    
+double_list: {
+      $$ = new std::vector<double>();
+    }
+    | float_number {
+      $$ = new std::vector<double>();
+      $$->emplace_back($1);
+    }
+    | double_list COMMA float_number {
+      $$ = $1;
+      $$->emplace_back($3);
+    }
+    ;
+float_number: NUMBER {
+      $$ = $1;
+    }
+    | FLOAT {
+      $$ = $1;
+    }
+    ;
 delete_stmt:    /*  delete 语句的语法解析树*/
     DELETE FROM ID where 
     {
@@ -614,6 +671,15 @@ expression:
       $$ = new UnboundFieldExpr(node->relation_name, node->attribute_name);
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
+    }
+    | L2_DISTANCE LBRACE expression COMMA expression RBRACE {
+      $$ = create_function_expression(FunctionExpr::Type::L2_DISTANCE, sql_string, $3, $5, &@$);
+    }
+    | COSINE_DISTANCE LBRACE expression COMMA expression RBRACE {
+      $$ = create_function_expression(FunctionExpr::Type::COSINE_DISTANCE, sql_string, $3, $5, &@$);
+    }
+    | INNER_PRODUCT LBRACE expression COMMA expression RBRACE {
+      $$ = create_function_expression(FunctionExpr::Type::INNER_PRODUCT, sql_string, $3, $5, &@$);
     }
     | COUNT LBRACE group_by_expression_list RBRACE {
       $$ = create_aggregate_expression("count", $3, sql_string, &@$);
