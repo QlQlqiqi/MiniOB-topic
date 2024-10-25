@@ -40,11 +40,12 @@ public:
   Index()          = default;
   virtual ~Index() = default;
 
-  virtual RC create(Table *table, const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta)
+  virtual RC create(Table *table, const char *file_name, const IndexMeta &index_meta, const std::vector<int> &field_ids,
+      const std::vector<const FieldMeta *> &field_metas, const bool unique)
   {
     return RC::UNSUPPORTED;
   }
-  virtual RC open(Table *table, const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta)
+  virtual RC open(Table *table, const char *file_name, const IndexMeta &index_meta, const std::vector<const FieldMeta *> &field_metas)
   {
     return RC::UNSUPPORTED;
   }
@@ -52,6 +53,7 @@ public:
   virtual bool is_vector_index() { return false; }
 
   const IndexMeta &index_meta() const { return index_meta_; }
+  const std::vector<FieldMeta> &field_metas() const { return field_metas_; }
 
   /**
    * @brief 插入一条数据
@@ -78,9 +80,10 @@ public:
    * @param right_key 要扫描的右边界
    * @param right_len 右边界的长度
    * @param right_inclusive 是否包含右边界
+   * @param field_meta 对于 value 来说的 field meta
    */
   virtual IndexScanner *create_scanner(const char *left_key, int left_len, bool left_inclusive, const char *right_key,
-      int right_len, bool right_inclusive) = 0;
+      int right_len, bool right_inclusive, const std::shared_ptr<FieldMeta> field_meta = nullptr) = 0;
 
   /**
    * @brief 同步索引数据到磁盘
@@ -89,11 +92,11 @@ public:
   virtual RC sync() = 0;
 
 protected:
-  RC init(const IndexMeta &index_meta, const FieldMeta &field_meta);
+  RC init(const IndexMeta &index_meta, const std::vector<const FieldMeta*> &field_metas);
 
 protected:
   IndexMeta index_meta_;  ///< 索引的元数据
-  FieldMeta field_meta_;  ///< 当前实现仅考虑一个字段的索引
+  std::vector<FieldMeta> field_metas_;  ///< 多个字段的索引
 };
 
 /**
