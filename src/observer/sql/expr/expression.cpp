@@ -180,9 +180,18 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
     return rc;
   }
 
-  if(comp_ != LIKE_OP && comp_ != NOT_LIKE_OP){
-    cmp_result = left.compare(right);
+  switch (comp_)
+  {
+    case EQUAL_TO:
+    case LESS_EQUAL:
+    case NOT_EQUAL:
+    case LESS_THAN:
+    case GREAT_EQUAL:
+    case GREAT_THAN:
+      cmp_result = left.compare(right);
+    default: break;
   }
+
   result         = false;
   switch (comp_) {
     case EQUAL_TO: {
@@ -208,6 +217,14 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
     } break;
     case NOT_LIKE_OP:{
       result = !str_like(left, right);
+    } break;
+    case IN_OP: {
+      LOG_WARN("unsupported comparison. %d", comp_);
+      rc = RC::INTERNAL;
+    } break;
+    case NOT_IN_OP: {
+      LOG_WARN("unsupported comparison. %d", comp_);
+      rc = RC::INTERNAL;
     } break;
     default: {
       LOG_WARN("unsupported comparison. %d", comp_);
@@ -870,12 +887,12 @@ RC FunctionExpr::type_from_string(const char *type_str, FunctionExpr::Type &type
   return rc;
 }
 
-SubQueryExpr::SubQueryExpr(SelectSqlNode &&sql_node) { sql_node_ = std::make_unique<SelectSqlNode>(std::move(sql_node)); }
+SubQueryExpr::SubQueryExpr(std::shared_ptr<SelectSqlNode> sql_node) : sql_node_(std::move(sql_node)) {}
+SubQueryExpr::SubQueryExpr(SelectSqlNode &&sql_node) :  sql_node_(std::make_shared<SelectSqlNode>(std::move(sql_node))) {}
 SubQueryExpr::~SubQueryExpr() = default;
-std::unique_ptr<Expression> SubQueryExpr::Clone() const { return nullptr; }
 
-const std::unique_ptr<SelectSqlNode>    &SubQueryExpr::sql_node() const { return sql_node_; }
-void                                     SubQueryExpr::set_select_stmt(SelectStmt *stmt) { stmt_.reset(stmt); }
+const std::shared_ptr<SelectSqlNode>    &SubQueryExpr::sql_node() const { return sql_node_; }
+void                                     SubQueryExpr::set_select_stmt(SelectStmt *stmt) const { stmt_.reset(stmt); }
 const std::unique_ptr<SelectStmt>       &SubQueryExpr::select_stmt() const { return stmt_; }
 void                                     SubQueryExpr::set_logical_oper(std::unique_ptr<LogicalOperator> &&oper) { logical_oper_ = std::move(oper); }
 const std::unique_ptr<LogicalOperator>  &SubQueryExpr::logical_oper() { return logical_oper_; }
