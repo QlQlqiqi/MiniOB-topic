@@ -31,6 +31,7 @@ DeleteStmt::~DeleteStmt()
 RC DeleteStmt::create(Db *db, const DeleteSqlNode &delete_sql, Stmt *&stmt)
 {
   const char *table_name = delete_sql.relation_name.c_str();
+  const string& table_alias = delete_sql.relation_alias;
   if (nullptr == db || nullptr == table_name) {
     LOG_WARN("invalid argument. db=%p, table_name=%p", db, table_name);
     return RC::INVALID_ARGUMENT;
@@ -46,6 +47,10 @@ RC DeleteStmt::create(Db *db, const DeleteSqlNode &delete_sql, Stmt *&stmt)
   std::unordered_map<std::string, Table *> table_map;
   table_map.insert(std::pair<std::string, Table *>(std::string(table_name), table));
 
+  if(!table_alias.empty()){
+      table_map.insert({table_alias, table});
+  }
+  
   FilterStmt *filter_stmt = nullptr;
   RC          rc          = FilterStmt::create(db, table, &table_map, delete_sql.conditions, filter_stmt);
   if (rc != RC::SUCCESS) {

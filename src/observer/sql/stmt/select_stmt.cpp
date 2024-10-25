@@ -30,6 +30,11 @@ SelectStmt::~SelectStmt()
     filter_stmt_ = nullptr;
   }
 }
+auto insert_alias_into_table_map (const std::string& alias, Table* table, unordered_map<std::string, Table*> &table_map) -> void{
+  if(table_map.count(alias) == 0){
+    table_map.insert({alias, table});
+  }
+}
 
 RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
 {
@@ -59,18 +64,25 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     return RC::SUCCESS;
   };
 
-  for (size_t i = 0; i < select_sql.relations.size(); i++) {
+
+  //relations[i] 为 relation_name; relations[i+1] 为 relation_alias 没有为""
+  for (size_t i = 0; i < select_sql.relations.size(); i = i+2) {
     const char *table_name = select_sql.relations[i].c_str();
+    std::string table_alias = select_sql.relations[i + 1];
     Table* table = nullptr;
     RC rc = check_and_collect_table(select_sql.relations[i], &table);
 
     if(rc != RC::SUCCESS){
       return rc;
     }
-
     binder_context.add_table(table);
     tables.push_back(table);
     table_map.insert({table_name, table});
+
+    if(!table_alias.empty()){
+      binder_context.add_alias(table_alias, table);
+      insert_alias_into_table_map(table_alias, table, table_map);
+    }
   }
 
 
@@ -81,41 +93,39 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     auto &inner_join_relations = select_sql.inner_join->relations;
     auto &inner_join_conditions = select_sql.inner_join->conditions; 
     assert(inner_join_conditions.size() == inner_join_relations.size());
-    for(size_t i = 0; i < inner_join_relations.size(); i++){
+
+    //i加2：因为inner_join_relations中存了relrelation_name, relation_alias。
+    //relations[i] 为 relation_name; relations[i+1] 为 relation_alias 没有为""
+    for(size_t i = 0; i < inner_join_relations.size(); i = i+2){
       Table *table = nullptr;
+      auto &relation_name = inner_join_relations[i];
+      auto &relation_alias = inner_join_relations[i+1];
+      auto &condition = inner_join_conditions[i/2];
       RC rc = RC::SUCCESS;
-      if((rc = check_and_collect_table(inner_join_relations[i], &table)) != RC::SUCCESS){
+      if((rc = check_and_collect_table(relation_name, &table)) != RC::SUCCESS){
         return rc;
       }
 
       binder_context.add_table(table);
       tables.push_back(table);
-      table_map.insert({inner_join_relations[i], table});
+      table_map.insert({relation_name, table});
+
+      if(!relation_alias.empty()){
+        binder_context.add_alias(relation_alias, table);
+        insert_alias_into_table_map(relation_alias, table, table_map);
+      }
 
       FilterStmt *filter_stmt = nullptr;
       rc                      = FilterStmt::create(db,
         table,
         &table_map,
-        inner_join_conditions[i].release(),
+        condition.release(),
         filter_stmt);
       if (rc != RC::SUCCESS) {
         LOG_WARN("cannot construct filter stmt");
         return rc;
       }
 
-      auto &expr = filter_stmt->get_expr();
-      ExpressionBinder expression_binder(binder_context);
-      if (expr) {
-        vector<unique_ptr<Expression>> filter_expressions;
-        auto                           l  = expr->Clone();
-        RC                             rc = expression_binder.bind_expression(l, filter_expressions);
-        if (OB_FAIL(rc)) {
-          LOG_INFO("bind expression failed. rc=%s", strrc(rc));
-          return rc;
-        }
-        ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
-        filter_stmt->set_expr(std::move(filter_expressions[0]));
-      }
       join_conditions.insert({table, std::unique_ptr<FilterStmt>(filter_stmt)});
     }
   }

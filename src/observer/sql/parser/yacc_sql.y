@@ -133,6 +133,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         OR
         SET
         ON
+        AS
         LOAD
         DATA
         INFILE
@@ -202,6 +203,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <value>               value
 %type <number>              number
 %type <string>              relation
+%type <string>              alias;
 %type <comp>                comp_op
 %type <comp>                exists_op
 %type <rel_attr>            rel_attr
@@ -221,7 +223,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <expression>          expression
 %type <expression>          sub_query_expr
 %type <expression>          aggregate_expr
-%type <expression>          group_by_expression_list
+%type <expression>          aggr_argument_list
 %type <expression_list>     expression_list
 %type <expression_list>     group_by
 %type <expression>          opt_having
@@ -468,6 +470,21 @@ attr_def:
       free($1);
     }
     ;
+
+alias:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    |ID
+    {
+      $$ = $1;
+    }
+    | AS ID
+    {
+      $$ = $2;
+    }
+    ;
 opt_null:
     /* empty */
     {
@@ -606,24 +623,32 @@ float_number: NUMBER {
     }
     ;
 delete_stmt:    /*  delete 语句的语法解析树*/
-    DELETE FROM ID where 
+    DELETE FROM ID alias where 
     {
       $$ = new ParsedSqlNode(SCF_DELETE);
       $$->deletion.relation_name = $3;
-      $$->deletion.conditions = $4;
+      if($4 != nullptr){
+      $$->deletion.relation_alias = $4;
+      }
+      $$->deletion.conditions = $5;
       free($3);
+      free($4);
     }
     ;
 update_stmt:      /*  update 语句的语法解析树*/
-    UPDATE ID SET update_kv_list where 
+    UPDATE ID alias SET update_kv_list where 
     {
       $$ = new ParsedSqlNode(SCF_UPDATE);
       $$->update.relation_name = $2;
-      $$->update.attribute_name.swap($4->attrs);
-      $$->update.value.swap($4->values);
-      $$->update.conditions = $5;
+      if($3 != nullptr){
+        $$->update.relation_alias = $3;
+      }
+      $$->update.attribute_name.swap($5->attrs);
+      $$->update.value.swap($5->values);
+      $$->update.conditions = $6;
       free($2);
-      delete($4);
+      free($3);
+      delete($5);
     }
     ;
 update_kv_list:
@@ -705,36 +730,49 @@ calc_stmt:
     ;
 
 expression_list:
-    expression
+    expression alias
     {
       $$ = new std::vector<std::unique_ptr<Expression>>;
       $$->emplace_back($1);
+      if($2 != nullptr){
+        $1->set_alias($2);
+        free($2);
+      }
     }
-    | expression COMMA expression_list
+    | expression alias COMMA expression_list
     {
-      if ($3 != nullptr) {
-        $$ = $3;
+      if ($4 != nullptr) {
+        $$ = $4;
       } else {
         $$ = new std::vector<std::unique_ptr<Expression>>;
+      }
+      if($2 != nullptr){
+        $1->set_alias($2);
+        free($2);
       }
       $$->emplace($$->begin(), $1);
     }
     ;
 
-group_by_expression_list:
+aggr_argument_list:
   /* empty */
   {
     $$ = nullptr;
   }
-  | expression COMMA expression_list
+  | expression alias
+  {
+    if($2 != nullptr){
+      $1->set_alias($2);
+      free($2);
+    }
+    $$ = $1;
+  }
+  | expression alias COMMA expression_list
   {
     $$ = nullptr;
     delete $1;
-    delete $3;
-  }
-  | expression
-  {
-    $$ = $1;
+    free($2);
+    delete $4;
   }
   ;
 
@@ -795,19 +833,19 @@ expression:
     ;
 
 aggregate_expr:
-    COUNT LBRACE group_by_expression_list RBRACE {
+    COUNT LBRACE aggr_argument_list RBRACE {
       $$ = create_aggregate_expression("count", $3, sql_string, &@$);
     }
-    | SUM LBRACE group_by_expression_list RBRACE {
+    | SUM LBRACE aggr_argument_list RBRACE {
       $$ = create_aggregate_expression("sum", $3, sql_string, &@$);
     }
-    | AVG LBRACE group_by_expression_list RBRACE {
+    | AVG LBRACE aggr_argument_list RBRACE {
       $$ = create_aggregate_expression("avg", $3, sql_string, &@$);
     }
-    | MIN LBRACE group_by_expression_list RBRACE {
+    | MIN LBRACE aggr_argument_list RBRACE {
       $$ = create_aggregate_expression("min", $3, sql_string, &@$);
     }
-    | MAX LBRACE group_by_expression_list RBRACE {
+    | MAX LBRACE aggr_argument_list RBRACE {
       $$ = create_aggregate_expression("max", $3, sql_string, &@$);
     }
 
@@ -825,7 +863,7 @@ rel_attr:
       $$->attribute_name = $1;
       free($1);
     }
-    | ID DOT ID {
+    | ID DOT ID{
       $$ = new RelAttrSqlNode;
       $$->relation_name  = $1;
       $$->attribute_name = $3;
@@ -840,18 +878,29 @@ relation:
     }
     ;
 rel_list:
-    relation {
+    relation alias{
       $$ = new std::vector<std::string>();
       $$->push_back($1);
+      if($2 != nullptr){
+        $$->push_back($2); //存在别名
+      }else{
+        $$->push_back(""); //别名为空
+      }
       free($1);
     }
-    | relation COMMA rel_list {
-      if ($3 != nullptr) {
-        $$ = $3;
+    | relation alias COMMA rel_list { 
+      if ($4 != nullptr) {
+        $$ = $4;
       } else {
         $$ = new std::vector<std::string>;
       }
 
+//Todo 改变遍历顺序
+      if($2 != nullptr){
+        $$->insert($$->begin(), $2); 
+      }else{
+        $$->insert($$->begin(),"");
+      }
       $$->insert($$->begin(), $1);
       free($1);
     }
@@ -870,14 +919,21 @@ inner_join_list:
         $$ = $1;
       }
       $$->relations.emplace_back($2->relation);
+      $$->relations.emplace_back($2->relation_alias);
       $$->conditions.emplace_back(std::move($2->condition));
       delete $2;
     }
     ;
 inner_join_rel:
-    INNER JOIN relation ON condition{
+    INNER JOIN relation alias ON condition{
       $$ = new InnerJoinUnit($3); 
-      $$->condition.reset($5); 
+      if($4 != nullptr){
+        $$->relation_alias = $4;
+        free($4);
+      }else{
+        $$->relation_alias = "";
+      }
+      $$->condition.reset($6); 
       free($3);
     }
     ;
