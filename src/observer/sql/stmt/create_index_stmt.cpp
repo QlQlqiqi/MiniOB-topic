@@ -32,6 +32,13 @@ RC CreateIndexStmt::create(Db *db, const CreateIndexSqlNode &create_index, Stmt 
     return RC::INVALID_ARGUMENT;
   }
 
+  for (auto &attr_name : create_index.attr_names) {
+    if (is_blank(attr_name.c_str())) {
+      LOG_WARN("invalid argument. attr_name is empty");
+      return RC::INVALID_ARGUMENT;
+    }
+  }
+
   // check whether the table exists
   Table *table = db->find_table(table_name);
   if (nullptr == table) {

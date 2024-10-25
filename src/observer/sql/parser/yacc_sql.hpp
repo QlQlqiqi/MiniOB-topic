@@ -161,8 +161,9 @@ union YYSTYPE
   bool                                       bools;
   std::vector<double> *                      double_list;
   double                                     float_number;
+  KeyValueList *                             kv_list;
 
-#line 166 "yacc_sql.hpp"
+#line 167 "yacc_sql.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;
