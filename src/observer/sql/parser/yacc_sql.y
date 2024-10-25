@@ -202,6 +202,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
+%type <relation_list>       idx_col_list
 %type <bools>               opt_null
 %type <bools>               opt_unique
 %type <value>               insert_value
@@ -338,14 +339,20 @@ desc_table_stmt:
     ;
 
 create_index_stmt:    /*create index 语句的语法解析树*/
-    CREATE opt_unique INDEX ID ON ID LBRACE ID RBRACE
+    CREATE opt_unique INDEX ID ON ID LBRACE ID idx_col_list RBRACE
     {
       $$ = new ParsedSqlNode(SCF_CREATE_INDEX);
       CreateIndexSqlNode &create_index = $$->create_index;
       create_index.index_name = $4;
       create_index.relation_name = $6;
-      create_index.attribute_name = $8;
       create_index.unique = $2;
+      std::vector<std::string> *idx_cols = $9;
+      if (nullptr != idx_cols) {
+        create_index.attr_names.swap(*idx_cols);
+        delete $9;
+      }
+      create_index.attr_names.emplace_back($8);
+      std::reverse(create_index.attr_names.begin(), create_index.attr_names.end());
       free($4);
       free($6);
       free($8);
@@ -359,6 +366,22 @@ opt_unique:
     | UNIQUE
     {
       $$ = true;
+    }
+    ;
+idx_col_list:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | COMMA ID idx_col_list
+    {
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new std::vector<std::string>;
+      }
+      $$->emplace_back($2);
+      free($2);
     }
     ;
 
@@ -435,6 +458,10 @@ attr_def:
       $$->name = $1;
       // 这块是 4 是因为 char 和 vector 需要用 ()
       $$->length = 4 + ($3 == true);
+      // 如果是 date，应该为 sizeof(common::DateTime)
+      if($$->type == AttrType::DATES) {
+        $$->length = sizeof(common::DateTime) + ($3 == true);
+      }
       $$->nullable = $3;
       free($1);
     }

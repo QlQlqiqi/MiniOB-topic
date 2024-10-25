@@ -16,13 +16,10 @@ See the Mulan PSL v2 for more details. */
 #include "storage/index/index.h"
 #include "storage/trx/trx.h"
 
-IndexScanPhysicalOperator::IndexScanPhysicalOperator(Table *table, Index *index, ReadWriteMode mode, const Value *left_value,
-    bool left_inclusive, const Value *right_value, bool right_inclusive)
-    : table_(table),
-      index_(index),
-      mode_(mode),
-      left_inclusive_(left_inclusive),
-      right_inclusive_(right_inclusive)
+IndexScanPhysicalOperator::IndexScanPhysicalOperator(Table *table, Index *index, ReadWriteMode mode,
+    const Value *left_value, bool left_inclusive, const Value *right_value, bool right_inclusive,
+    const FieldMeta *field_meta)
+    : table_(table), index_(index), mode_(mode), left_inclusive_(left_inclusive), right_inclusive_(right_inclusive)
 {
   if (left_value) {
     left_value_ = *left_value;
@@ -30,6 +27,12 @@ IndexScanPhysicalOperator::IndexScanPhysicalOperator(Table *table, Index *index,
   if (right_value) {
     right_value_ = *right_value;
   }
+  // 如果没有 field meta 也可以
+  if (field_meta == nullptr) {
+    field_meta_ = nullptr;
+    return;
+  }
+  field_meta_ = std::make_shared<FieldMeta>(*field_meta);
 }
 
 RC IndexScanPhysicalOperator::open(Trx *trx)
@@ -43,7 +46,8 @@ RC IndexScanPhysicalOperator::open(Trx *trx)
       left_inclusive_,
       right_value_.data(),
       right_value_.length(),
-      right_inclusive_);
+      right_inclusive_,
+      field_meta_);
   if (nullptr == index_scanner) {
     LOG_WARN("failed to create index scanner");
     return RC::INTERNAL;
