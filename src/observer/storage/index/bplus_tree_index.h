@@ -27,8 +27,10 @@ public:
   BplusTreeIndex() = default;
   virtual ~BplusTreeIndex() noexcept;
 
-  RC create(Table *table, const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta) override;
-  RC open(Table *table, const char *file_name, const IndexMeta &index_meta, const FieldMeta &field_meta) override;
+  RC create(Table *table, const char *file_name, const IndexMeta &index_meta, const std::vector<int> &field_ids,
+      const std::vector<const FieldMeta *> &field_metas, const bool unique) override;
+  RC open(Table *table, const char *file_name, const IndexMeta &index_meta,
+      const std::vector<const FieldMeta *> &field_metas) override;
   RC close();
 
   RC insert_entry(const char *record, const RID *rid) override;
@@ -38,7 +40,7 @@ public:
    * 扫描指定范围的数据
    */
   IndexScanner *create_scanner(const char *left_key, int left_len, bool left_inclusive, const char *right_key,
-      int right_len, bool right_inclusive) override;
+      int right_len, bool right_inclusive, const std::shared_ptr<FieldMeta> field_meta = nullptr) override;
 
   RC sync() override;
 
@@ -62,7 +64,7 @@ public:
   RC destroy() override;
 
   RC open(const char *left_key, int left_len, bool left_inclusive, const char *right_key, int right_len,
-      bool right_inclusive);
+      bool right_inclusive, const std::shared_ptr<FieldMeta> field_meta = nullptr);
 
 private:
   BplusTreeScanner tree_scanner_;
