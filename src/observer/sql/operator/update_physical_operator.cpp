@@ -20,8 +20,8 @@ See the Mulan PSL v2 for more details. */
 using namespace std;
 
 UpdatePhysicalOperator::UpdatePhysicalOperator(
-    Table *table, std::vector<Value> values, std::vector<FieldMeta> field_metas)
-    : table_(table), values_(std::move(values)), field_metas_(std::move(field_metas))
+    Table *table, std::vector<std::pair<FieldMeta, Value>> values)
+    : table_(table), values_(std::move(values))
 {}
 
 RC UpdatePhysicalOperator::open(Trx *trx)
@@ -64,10 +64,10 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     Record table_record;
     table_->get_record(record.rid(), table_record);
 
-    for (size_t i = 0; i < values_.size(); ++i)
+    for (auto& item : values_)
     {
-      auto &f       = field_metas_[i];
-      auto &v       = values_[i];
+      auto &f       = item.first;
+      auto &v       = item.second;
 
       // 1. prepare a record...
       switch (v.attr_type())
@@ -98,7 +98,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         }
         default:
         {
-          rc = table_record.set_field(f.offset() + f.nullable(), v.length() - f.nullable(), values_[i].data());
+          rc = table_record.set_field(f.offset() + f.nullable(), v.length() - f.nullable(), v.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             trx->rollback();

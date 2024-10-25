@@ -183,10 +183,20 @@ struct DeleteSqlNode
 struct UpdateSqlNode
 {
   std::string                   relation_name;   ///< Relation to update
-  std::string                   attribute_name;  ///< 更新的字段，仅支持一个字段
-  Value                         value;           ///< 更新的值，仅支持一个字段
+  std::vector<std::string>      attribute_name;  ///< 要修改的属性
+  std::vector<Value>            value;           ///< 要更新的值
   Expression                   *conditions;      ///< 查询条件
   // std::vector<ConditionSqlNode> conditions;
+};
+
+/**
+ * @brief 描述一个update语句的属性-值列表
+ * @ingroup SQLParser
+ */
+struct KeyValueList
+{
+  std::vector<std::string> attrs; ///< 要修改的属性
+  std::vector<Value> values;      ///< 要更新的值
 };
 
 /**
