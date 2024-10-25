@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/update_stmt.h"
 #include "storage/table/table.h"
 #include "storage/trx/trx.h"
+#include <algorithm>
 
 using namespace std;
 
@@ -23,6 +24,27 @@ UpdatePhysicalOperator::UpdatePhysicalOperator(
     Table *table, std::vector<std::pair<FieldMeta, Value>> values)
     : table_(table), values_(std::move(values))
 {}
+
+RC UpdatePhysicalOperator::rollback(
+    Trx *trx, std::vector<Record> &deleted_records, std::vector<Record> &inserted_records) const
+{
+  RC rc;
+  for (auto &record : inserted_records) {
+    rc = trx->delete_record(table_, record);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to rollback in delete records: %s", strrc(rc));
+      return rc;
+    }
+  }
+  for (auto &record : deleted_records) {
+    rc = trx->insert_record(table_, record);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to rollback in insert records: %s", strrc(rc));
+      return rc;
+    }
+  }
+  return rc;
+}
 
 RC UpdatePhysicalOperator::open(Trx *trx)
 {
@@ -59,10 +81,20 @@ RC UpdatePhysicalOperator::open(Trx *trx)
 
   child->close();
 
+  // TODO(qiqi): 因为目前没有 trx 功能，所以需要手动恢复
+  std::vector<Record> deleted_records;
+  std::vector<Record> inserted_records;
+
   for (Record &record : records_)
   {
     Record table_record;
-    table_->get_record(record.rid(), table_record);
+    rc = table_->get_record(record.rid(), table_record);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to get record. rid=%d, rc=%s", record.rid(), strrc(rc));
+      trx->rollback();
+      rollback(trx, deleted_records, inserted_records);
+      return rc;
+    }
 
     for (auto& item : values_)
     {
@@ -81,6 +113,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             trx->rollback();
+            rollback(trx, deleted_records, inserted_records);
             return rc;
           }
         } break;
@@ -92,6 +125,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             trx->rollback();
+            rollback(trx, deleted_records, inserted_records);
             return rc;
           }
           [[fallthrough]];
@@ -102,6 +136,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             trx->rollback();
+            rollback(trx, deleted_records, inserted_records);
             return rc;
           }
         } break;
@@ -113,8 +148,12 @@ RC UpdatePhysicalOperator::open(Trx *trx)
       {
         LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
         trx->rollback();
+        rollback(trx, deleted_records, inserted_records);
         return rc;
       }
+      Record tmp1 = record;
+      tmp1.copy_data(record.data(), record.len());
+      deleted_records.emplace_back(tmp1);
 
       // 3. insert new record...
       rc = trx->insert_record(table_, table_record);
@@ -122,8 +161,12 @@ RC UpdatePhysicalOperator::open(Trx *trx)
       {
         LOG_WARN("failed to insert new record. rid=%d, rc=%s", record.rid(), strrc(rc));
         trx->rollback();
+        rollback(trx, deleted_records, inserted_records);
         return rc;
       }
+      Record tmp2 = table_record;
+      tmp2.copy_data(record.data(), record.len());
+      inserted_records.emplace_back(tmp2);
     }
   }
 
