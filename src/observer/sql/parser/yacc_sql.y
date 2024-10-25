@@ -349,7 +349,6 @@ create_index_stmt:    /*create index 语句的语法解析树*/
       create_index.relation_name = $6;
       create_index.unique = $2;
       create_index.attr_names.swap(*$9);
-      delete $9;
       create_index.attr_names.emplace_back($8);
       std::reverse(create_index.attr_names.begin(), create_index.attr_names.end());
       free($4);
