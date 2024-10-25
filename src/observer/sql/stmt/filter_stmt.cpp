@@ -27,6 +27,8 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
     const Expression *conditions, FilterStmt *&stmt)
 {
   free(stmt);
+  
+  RC rc = RC::SUCCESS;
 
   FilterStmt *tmp_stmt    = new FilterStmt();
   BinderContext binder_context;
@@ -41,21 +43,26 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
   if (conditions) {
     vector<unique_ptr<Expression>> filter_expressions;
     filter_expressions.reserve(1);
+    auto l  = conditions->Clone();
 
-    if (conditions->type() == ExprType::SUBQUERY)
+    if (l->type() == ExprType::COMPARISON)
     {
-      auto subquery_expr = static_cast<const SubQueryExpr *>(conditions);
-      Stmt * select_stmt = nullptr;
-      if (RC rc = SelectStmt::create(db, *subquery_expr->sql_node(), select_stmt); RC::SUCCESS != rc) {
-        return rc;
-      }
-      if (select_stmt->type() != StmtType::SELECT) {
-        return RC::INVALID_ARGUMENT;
-      }
-      subquery_expr->set_select_stmt(static_cast<SelectStmt*>(select_stmt));
+      auto comp_expr = static_cast<ComparisonExpr *>(l.get());
+      auto f         = [db](SubQueryExpr *subquery_expr) {
+        Stmt *select_stmt = nullptr;
+        if (RC rc = SelectStmt::create(db, *subquery_expr->sql_node(), select_stmt); RC::SUCCESS != rc)
+        {
+          return rc;
+        }
+        if (select_stmt->type() != StmtType::SELECT) { return RC::INVALID_ARGUMENT; }
+        subquery_expr->set_select_stmt(static_cast<SelectStmt *>(select_stmt));
+        return RC::SUCCESS;
+      };
+
+      if (auto left  = comp_expr->left().get();  left->type() == ExprType::SUBQUERY)  { rc = f(static_cast<SubQueryExpr *>(left)); }
+      if (auto right = comp_expr->right().get(); right->type() == ExprType::SUBQUERY) { rc = f(static_cast<SubQueryExpr *>(right)); }
     }
 
-    auto l  = conditions->Clone();
     RC   rc = expression_binder.bind_expression(l, filter_expressions);
     if (OB_FAIL(rc)) {
       LOG_INFO("bind expression failed. rc=%s", strrc(rc));
@@ -66,6 +73,6 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
   }
 
   stmt = tmp_stmt;
-  return RC::SUCCESS;
+  return rc;
 }
 

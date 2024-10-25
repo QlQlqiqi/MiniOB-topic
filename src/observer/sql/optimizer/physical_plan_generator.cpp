@@ -146,6 +146,22 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
   for (auto &expr : predicates) {
     if (expr->type() == ExprType::COMPARISON) {
       auto comparison_expr = static_cast<ComparisonExpr *>(expr.get());
+      auto f               = [this](SubQueryExpr *sub_query_expr) {
+        std::unique_ptr<PhysicalOperator> sub_query_phy_oper;
+        if (RC rc = create(*sub_query_expr->logical_oper().get(), sub_query_phy_oper); RC::SUCCESS != rc) {
+          return rc;
+        }
+        sub_query_expr->set_physical_oper(std::move(sub_query_phy_oper));
+        return RC::SUCCESS;
+      };
+
+      RC rc2;
+      if (auto left  = comparison_expr->left().get();  left->type() == ExprType::SUBQUERY)  { rc2 = f(static_cast<SubQueryExpr *>(left)); }
+      if (auto right = comparison_expr->right().get(); right->type() == ExprType::SUBQUERY) { rc2 = f(static_cast<SubQueryExpr *>(right)); }
+      if (OB_FAIL(rc2)) {
+        return rc2;
+      }
+
       // 简单处理，就找等值查询
       if (comparison_expr->comp() != EQUAL_TO) {
         continue;

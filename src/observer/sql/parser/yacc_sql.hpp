@@ -119,12 +119,13 @@ extern int yydebug;
     EXISTS = 325,
     VECTORS = 326,
     QUOTE = 327,
-    NUMBER = 328,
-    FLOAT = 329,
-    ID = 330,
-    SSS = 331,
-    DATE_STR = 332,
-    UMINUS = 333
+    UNIQUE = 328,
+    NUMBER = 329,
+    FLOAT = 330,
+    ID = 331,
+    SSS = 332,
+    DATE_STR = 333,
+    UMINUS = 334
   };
 #endif
 
@@ -132,7 +133,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 162 "yacc_sql.y"
+#line 163 "yacc_sql.y"
 
   ParsedSqlNode *                            sql_node;
   Value *                                    value;
@@ -156,8 +157,9 @@ union YYSTYPE
   bool                                       bools;
   std::vector<double> *                      double_list;
   double                                     float_number;
+  KeyValueList *                             kv_list;
 
-#line 161 "yacc_sql.hpp"
+#line 163 "yacc_sql.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;

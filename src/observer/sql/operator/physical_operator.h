@@ -83,6 +83,14 @@ public:
   virtual RC next(Chunk &chunk) { return RC::UNIMPLEMENTED; }
   virtual RC close() = 0;
 
+  void set_parent(const Tuple* tuple)
+  {
+    parent_ = tuple;
+    for (auto& child : children_) {
+      child->set_parent(tuple);
+    }
+  }
+
   virtual Tuple *current_tuple() { return nullptr; }
 
   virtual RC tuple_schema(TupleSchema &schema) const { return RC::UNIMPLEMENTED; }
@@ -92,5 +100,6 @@ public:
   std::vector<std::unique_ptr<PhysicalOperator>> &children() { return children_; }
 
 protected:
+  const Tuple                                   *parent_;
   std::vector<std::unique_ptr<PhysicalOperator>> children_;
 };

@@ -579,30 +579,33 @@ public:
   SubQueryExpr(SelectSqlNode &&sql_node);
   virtual ~SubQueryExpr();
 
-  RC open(Trx* trx);
-  RC close();
-
-  bool eof(const Tuple &tuple) const;
-
-  RC get_value(const Tuple &tuple, Value &value) const override { return RC::UNIMPLEMENTED; }
+  RC get_value(const Tuple &tuple, Value &value) const override;
 
   ExprType type() const override { return ExprType::SUBQUERY; }
 
   AttrType value_type() const override { return AttrType::UNDEFINED; }
 
-  std::unique_ptr<Expression> Clone() const override { return std::make_unique<SubQueryExpr>(sql_node_); }
+  std::unique_ptr<Expression> Clone() const override
+  {
+    auto ret = std::make_unique<SubQueryExpr>(sql_node_);
+    if (stmt_) { ret->stmt_ = stmt_; }
+    return ret;
+  }
 
   const std::shared_ptr<SelectSqlNode>    &sql_node() const;
   void                                     set_select_stmt(SelectStmt *stmt) const;
-  const std::unique_ptr<SelectStmt>       &select_stmt() const;
+  const std::shared_ptr<SelectStmt>       &select_stmt() const;
   void                                     set_logical_oper(std::unique_ptr<LogicalOperator> &&oper);
   const std::unique_ptr<LogicalOperator>  &logical_oper();
   void                                     set_physical_oper(std::unique_ptr<PhysicalOperator> &&oper);
   const std::unique_ptr<PhysicalOperator> &physical_oper();
 
 private:
+  RC _open(Trx *trx) const;
+
   std::shared_ptr<SelectSqlNode>      sql_node_;
-  mutable std::unique_ptr<SelectStmt> stmt_;
+  mutable std::shared_ptr<SelectStmt> stmt_;
   std::unique_ptr<LogicalOperator>    logical_oper_;
   std::unique_ptr<PhysicalOperator>   physical_oper_;
+  mutable bool                        is_open_       = false;
 };
