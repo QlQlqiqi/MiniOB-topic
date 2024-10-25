@@ -157,6 +157,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         EXISTS
         VECTORS
         QUOTE
+        UNIQUE
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -182,6 +183,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
   bool                                       bools;
   std::vector<double> *                      double_list;
   double                                     float_number;
+  KeyValueList *                             kv_list;
 }
 
 %token <number> NUMBER
@@ -203,10 +205,13 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
+%type <relation_list>       idx_col_list
 %type <bools>               opt_null
+%type <bools>               opt_unique
 %type <value>               insert_value
 %type <value_list>          value_list
-%type <expression>           where
+%type <kv_list>             update_kv_list
+%type <expression>          where
 %type <string>              storage_format
 %type <relation_list>       rel_list
 %type <inner_join>          inner_join_list
@@ -339,16 +344,43 @@ desc_table_stmt:
     ;
 
 create_index_stmt:    /*create index 语句的语法解析树*/
-    CREATE INDEX ID ON ID LBRACE ID RBRACE
+    CREATE opt_unique INDEX ID ON ID LBRACE ID idx_col_list RBRACE
     {
       $$ = new ParsedSqlNode(SCF_CREATE_INDEX);
       CreateIndexSqlNode &create_index = $$->create_index;
-      create_index.index_name = $3;
-      create_index.relation_name = $5;
-      create_index.attribute_name = $7;
-      free($3);
-      free($5);
-      free($7);
+      create_index.index_name = $4;
+      create_index.relation_name = $6;
+      create_index.attribute_name = $8;
+      create_index.unique = $2;
+      create_index.attr_names.swap(*$9);
+      create_index.attr_names.emplace_back($8);
+      std::reverse(create_index.attr_names.begin(), create_index.attr_names.end());
+      free($4);
+      free($6);
+      free($8);
+      delete $9;
+    }
+    ;
+opt_unique:
+    /* empty */
+    {
+      $$ = false;
+    }
+    | UNIQUE
+    {
+      $$ = true;
+    }
+    ;
+idx_col_list:
+    /* empty */
+    {
+      $$ = new std::vector<std::string>;
+    }
+    | COMMA ID idx_col_list
+    {
+      $$ = $3;
+      $$->emplace_back($2);
+      free($2);
     }
     ;
 
@@ -576,17 +608,36 @@ delete_stmt:    /*  delete 语句的语法解析树*/
     }
     ;
 update_stmt:      /*  update 语句的语法解析树*/
-    UPDATE ID SET ID EQ value where 
+    UPDATE ID SET update_kv_list where 
     {
       $$ = new ParsedSqlNode(SCF_UPDATE);
       $$->update.relation_name = $2;
-      $$->update.attribute_name = $4;
-      $$->update.value = *$6;
-      $$->update.conditions = $7;
+      $$->update.attribute_name.swap($4->attrs);
+      $$->update.value.swap($4->values);
+      $$->update.conditions = $5;
       free($2);
-      free($4);
+      delete($4);
     }
     ;
+update_kv_list:
+    ID EQ value
+    {
+      $$ = new KeyValueList{};
+      $$->attrs.emplace_back($1);
+      $$->values.emplace_back(*$3);
+      free($1);
+      delete $3;
+    }
+    | update_kv_list COMMA ID EQ value
+    {
+      $$ = $1;
+      $$->attrs.emplace_back($3);
+      $$->values.emplace_back(*$5);
+      free($3);
+      delete $5;
+    }
+    ;
+
 select_stmt:        /*  select 语句的语法解析树*/
     SELECT expression_list FROM rel_list inner_join_list where group_by order_by
     {

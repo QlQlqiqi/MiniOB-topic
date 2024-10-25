@@ -219,16 +219,8 @@ RC LogicalPlanGenerator::create_plan(InsertStmt *insert_stmt, unique_ptr<Logical
 
 RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<LogicalOperator> &logical_operator)
 {
-  Table            *table = update_stmt->table();
-  vector<Value>     values(update_stmt->values(), update_stmt->values() + update_stmt->value_amount());
-  vector<FieldMeta> fields;
-  if (update_stmt->field_metas() == nullptr)
-  {
-    return RC::SCHEMA_FIELD_NOT_EXIST;
-  }
-  for (int i = 0; i < update_stmt->field_amount(); ++i) {
-    fields.emplace_back(update_stmt->field_metas()[i]);
-  }
+  Table                                   *table = update_stmt->table();
+  std::vector<std::pair<FieldMeta, Value>> values(update_stmt->values());
 
   FilterStmt                 *filter_stmt = update_stmt->filter_stmt();
   unique_ptr<LogicalOperator> table_get_oper(new TableGetLogicalOperator(table, ReadWriteMode::READ_WRITE));
@@ -240,7 +232,7 @@ RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<Logical
     return rc;
   }
 
-  UpdateLogicalOperator *update_oper = new UpdateLogicalOperator(table, values, fields);
+  UpdateLogicalOperator *update_oper = new UpdateLogicalOperator(table, std::move(values));
 
   if (predicate_oper) {
     predicate_oper->add_child(std::move(table_get_oper));
