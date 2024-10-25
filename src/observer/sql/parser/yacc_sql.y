@@ -202,6 +202,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
+%type <relation_list>       idx_col_list
 %type <bools>               opt_null
 %type <bools>               opt_unique
 %type <value>               insert_value
@@ -338,7 +339,7 @@ desc_table_stmt:
     ;
 
 create_index_stmt:    /*create index 语句的语法解析树*/
-    CREATE opt_unique INDEX ID ON ID LBRACE ID RBRACE
+    CREATE opt_unique INDEX ID ON ID LBRACE ID idx_col_list RBRACE
     {
       $$ = new ParsedSqlNode(SCF_CREATE_INDEX);
       CreateIndexSqlNode &create_index = $$->create_index;
@@ -346,9 +347,13 @@ create_index_stmt:    /*create index 语句的语法解析树*/
       create_index.relation_name = $6;
       create_index.attribute_name = $8;
       create_index.unique = $2;
+      create_index.attr_names.swap(*$9);
+      create_index.attr_names.emplace_back($8);
+      std::reverse(create_index.attr_names.begin(), create_index.attr_names.end());
       free($4);
       free($6);
       free($8);
+      delete $9;
     }
     ;
 opt_unique:
@@ -359,6 +364,18 @@ opt_unique:
     | UNIQUE
     {
       $$ = true;
+    }
+    ;
+idx_col_list:
+    /* empty */
+    {
+      $$ = new std::vector<std::string>;
+    }
+    | COMMA ID idx_col_list
+    {
+      $$ = $3;
+      $$->emplace_back($2);
+      free($2);
     }
     ;
 
