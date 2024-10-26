@@ -30,26 +30,16 @@ class FieldMeta;
 class CreateIndexStmt : public Stmt
 {
 public:
-  CreateIndexStmt(Table *table, const FieldMeta *field_meta, const std::string &index_name, const bool unique)
+  CreateIndexStmt(Table *table, std::vector<const FieldMeta *> &field_meta, const std::string &index_name, const bool unique)
       : table_(table), field_meta_(field_meta), index_name_(index_name), unique_(unique)
   {}
-
-  CreateIndexStmt(
-      Table *table, std::vector<const FieldMeta *> field_metas, const std::string &index_name, const bool unique)
-      : table_(table), field_metas_(field_metas), index_name_(index_name), unique_(unique)
-  {
-    // TODO(qiqi): 为了测试，这里只是使用一个 field meta
-    ASSERT(field_metas_.size() == 1, "it is test now");
-    field_meta_ = field_metas_[0];
-  }
 
   virtual ~CreateIndexStmt() = default;
 
   StmtType type() const override { return StmtType::CREATE_INDEX; }
 
   Table             *table() const { return table_; }
-  const FieldMeta   *field_meta() const { return field_meta_; }
-  const std::vector<const FieldMeta *> field_metas() const { return field_metas_; }
+  const std::vector<const FieldMeta *> &field_meta() const { return field_meta_; }
   const std::string &index_name() const { return index_name_; }
   bool unique() const { return unique_; }
 
@@ -58,8 +48,7 @@ public:
 
 private:
   Table           *table_      = nullptr;
-  const FieldMeta *field_meta_ = nullptr;
-  std::vector<const FieldMeta *> field_metas_;
+  std::vector<const FieldMeta*> field_meta_;
   std::string      index_name_;
   bool unique_;
 };

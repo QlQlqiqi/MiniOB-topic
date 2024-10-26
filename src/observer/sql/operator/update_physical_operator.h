@@ -42,6 +42,9 @@ public:
 
 
 private:
+  // TODO(qiqi): 暂时被用于 rollback
+  RC rollback(Trx *trx, std::vector<Record> &deleted_records, std::vector<Record> &inserted_records) const;
+
   Table                 *table_ = nullptr;
   Trx                   *trx_   = nullptr;
   std::vector<Record>    records_;
