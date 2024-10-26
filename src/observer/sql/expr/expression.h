@@ -49,6 +49,7 @@ enum class ExprType
   AGGREGATION,  ///< 聚合运算
   FUNCTION,     ///< vector 函数运算
   SUBQUERY,     ///< 子查询
+  EXPRLIST,     ///< 表达式列表
 };
 
 /**
@@ -568,11 +569,17 @@ private:
   std::unique_ptr<Expression> right_;
 };
 
+class EnumerableExpr : public Expression
+{
+public:
+  virtual RC get_value_with_eof(const Tuple &tuple, Value &value) const = 0;
+};
+
 class SelectSqlNode;
 class SelectStmt;
 class LogicalOperator;
 class PhysicalOperator;
-class SubQueryExpr : public Expression
+class SubQueryExpr : public EnumerableExpr
 {
 public:
   SubQueryExpr(std::shared_ptr<SelectSqlNode> sql_node);
@@ -580,7 +587,7 @@ public:
   virtual ~SubQueryExpr();
 
   RC get_value(const Tuple &tuple, Value &value) const override;
-  RC get_value_with_eof(const Tuple &tuple, Value &value) const;
+  RC get_value_with_eof(const Tuple &tuple, Value &value) const override;
 
   ExprType type() const override { return ExprType::SUBQUERY; }
 
@@ -612,4 +619,51 @@ private:
   mutable std::vector<Value>          selected_values_;
   mutable bool                        cached_          = false;
   mutable size_t                      current_         = 0;
+};
+
+class ExprListExpr : public EnumerableExpr
+{
+public:
+  ExprListExpr(std::vector<std::unique_ptr<Expression>> &&exprs) { exprs_.swap(exprs); }
+
+  virtual ~ExprListExpr() = default;
+
+  RC get_value(const Tuple &tuple, Value &value) const override
+  {
+    RC rc = get_value_with_eof(tuple, value);
+    if (rc == RC::RECORD_EOF)
+    {
+      rc = get_value_with_eof(tuple, value);
+    }
+    return rc;
+  }
+
+  RC get_value_with_eof(const Tuple &tuple, Value &value) const override
+  {
+    if (cur_idx_ >= exprs_.size()) {
+      cur_idx_ = 0;
+      return RC::RECORD_EOF;
+    }
+    return exprs_[const_cast<int&>(cur_idx_)++]->get_value(tuple, value);
+  }
+
+  RC try_get_value(Value &value) const override { return RC::UNIMPLEMENTED; }
+
+  ExprType type() const override { return ExprType::EXPRLIST; }
+
+  AttrType value_type() const override { return AttrType::UNDEFINED; }
+
+  std::unique_ptr<Expression> Clone() const override
+  {
+    std::vector<std::unique_ptr<Expression>> new_children;
+    for (auto& expr : exprs_) {
+      new_children.emplace_back(expr->Clone());
+    }
+    auto new_expr = std::make_unique<ExprListExpr>(std::move(new_children));
+    new_expr->set_name(name());
+    return new_expr;
+  }
+private:
+  mutable int cur_idx_ = 0;
+  std::vector<std::unique_ptr<Expression>> exprs_;
 };

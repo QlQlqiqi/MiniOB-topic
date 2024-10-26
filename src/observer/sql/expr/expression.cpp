@@ -218,14 +218,6 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
     case NOT_LIKE_OP:{
       result = !str_like(left, right);
     } break;
-    case IN_OP: {
-      LOG_WARN("should not be here. %d", comp_);
-      rc = RC::INTERNAL;
-    } break;
-    case NOT_IN_OP: {
-      LOG_WARN("should not be here. %d", comp_);
-      rc = RC::INTERNAL;
-    } break;
     default: {
       LOG_WARN("unsupported comparison. %d", comp_);
       rc = RC::INTERNAL;
@@ -295,12 +287,12 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
 
       bool result = false;
       bool has_a_null = false;
-      if (right_->type() != ExprType::SUBQUERY)
+      if (right_->type() != ExprType::SUBQUERY && right_->type() != ExprType::EXPRLIST)
       {
-        LOG_WARN("There should be a sub query clause");
+        LOG_WARN("There should be a enumerable expression after the word `IN`.");
         return RC::INVALID_ARGUMENT;
       }
-      auto sq_expr    = static_cast<const SubQueryExpr *>(right_.get());
+      auto sq_expr    = static_cast<const EnumerableExpr *>(right_.get());
       while (RC::SUCCESS == (rc = sq_expr->get_value_with_eof(tuple, right_value))) {
         if (right_value.is_null()) { has_a_null = true; }
         else if (left_value.compare(right_value) == ValCmpRes::EQUAL) { result = true; }
