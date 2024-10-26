@@ -644,7 +644,7 @@ public:
       cur_idx_ = 0;
       return RC::RECORD_EOF;
     }
-    return exprs_[const_cast<int&>(cur_idx_)++]->get_value(tuple, value);
+    return exprs_[cur_idx_++]->get_value(tuple, value);
   }
 
   RC try_get_value(Value &value) const override { return RC::UNIMPLEMENTED; }
@@ -664,6 +664,6 @@ public:
     return new_expr;
   }
 private:
-  mutable int cur_idx_ = 0;
+  mutable size_t cur_idx_ = 0;
   std::vector<std::unique_ptr<Expression>> exprs_;
 };

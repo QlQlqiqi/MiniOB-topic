@@ -289,7 +289,7 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
       bool has_a_null = false;
       if (right_->type() != ExprType::SUBQUERY && right_->type() != ExprType::EXPRLIST)
       {
-        LOG_WARN("There should be a enumerable expression after the word `IN`.");
+        LOG_WARN("Expected an enumerable expression after `IN`.");
         return RC::INVALID_ARGUMENT;
       }
       auto sq_expr    = static_cast<const EnumerableExpr *>(right_.get());
@@ -314,6 +314,17 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
       bool bool_value = false;
 
       rc = compare_value(left_value, right_value, bool_value);
+
+      if (right_->type() == ExprType::SUBQUERY || right_->type() == ExprType::EXPRLIST)
+      {
+        auto sq_expr    = static_cast<const EnumerableExpr *>(right_.get());
+        if (sq_expr->get_value_with_eof(tuple, right_value) != RC::RECORD_EOF)
+        {
+          LOG_WARN("Expected a scalar expression to compare.");
+          return RC::INVALID_ARGUMENT;
+        }
+      }
+
       if (rc == RC::SUCCESS)
       {
         value.set_boolean(bool_value);
