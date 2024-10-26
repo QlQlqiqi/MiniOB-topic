@@ -190,13 +190,32 @@ RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<Logical
 {
   // 原来这里会把 value 的 type 统一，这块改成不统一，
   // 并且改成使用 expr
-  auto &expr = filter_stmt->get_expr();
+  RC rc = RC::SUCCESS;
+
+  auto                                &expr = filter_stmt->get_expr();
   unique_ptr<PredicateLogicalOperator> pre_oper;
+
   if (expr) {
     pre_oper = std::make_unique<PredicateLogicalOperator>(expr->Clone());
+
+    if (expr->type() == ExprType::COMPARISON)
+    {
+      auto comp_expr = static_cast<ComparisonExpr *>(pre_oper->expressions()[0].get());
+      auto f         = [this](SubQueryExpr *sub_query_expr) {
+        std::unique_ptr<LogicalOperator> sub_query_logi_oper;
+        if (RC rc = create_plan(sub_query_expr->select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
+          return rc;
+        }
+        sub_query_expr->set_logical_oper(std::move(sub_query_logi_oper));
+        return RC::SUCCESS;
+      };
+
+      if (auto left  = comp_expr->left().get();  left->type() == ExprType::SUBQUERY)  { rc = f(static_cast<SubQueryExpr *>(left)); }
+      if (auto right = comp_expr->right().get(); right->type() == ExprType::SUBQUERY) { rc = f(static_cast<SubQueryExpr *>(right)); }
+    }
   }
   logical_operator = std::move(pre_oper);
-  return RC::SUCCESS;
+  return rc;
 }
 
 int LogicalPlanGenerator::implicit_cast_cost(AttrType from, AttrType to)

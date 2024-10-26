@@ -48,6 +48,8 @@ enum class ExprType
   ARITHMETIC,   ///< 算术运算
   AGGREGATION,  ///< 聚合运算
   FUNCTION,     ///< vector 函数运算
+  SUBQUERY,     ///< 子查询
+  EXPRLIST,     ///< 表达式列表
 };
 
 /**
@@ -565,4 +567,103 @@ private:
   Type                        function_type_;
   std::unique_ptr<Expression> left_;
   std::unique_ptr<Expression> right_;
+};
+
+class EnumerableExpr : public Expression
+{
+public:
+  virtual RC get_value_with_eof(const Tuple &tuple, Value &value) const = 0;
+};
+
+class SelectSqlNode;
+class SelectStmt;
+class LogicalOperator;
+class PhysicalOperator;
+class SubQueryExpr : public EnumerableExpr
+{
+public:
+  SubQueryExpr(std::shared_ptr<SelectSqlNode> sql_node);
+  SubQueryExpr(SelectSqlNode &&sql_node);
+  virtual ~SubQueryExpr();
+
+  RC get_value(const Tuple &tuple, Value &value) const override;
+  RC get_value_with_eof(const Tuple &tuple, Value &value) const override;
+
+  ExprType type() const override { return ExprType::SUBQUERY; }
+
+  AttrType value_type() const override { return AttrType::UNDEFINED; }
+
+  std::unique_ptr<Expression> Clone() const override
+  {
+    auto ret = std::make_unique<SubQueryExpr>(sql_node_);
+    if (stmt_) { ret->stmt_ = stmt_; }
+    return ret;
+  }
+
+  const std::shared_ptr<SelectSqlNode>    &sql_node() const;
+  void                                     set_select_stmt(SelectStmt *stmt) const;
+  const std::shared_ptr<SelectStmt>       &select_stmt() const;
+  void                                     set_logical_oper(std::unique_ptr<LogicalOperator> &&oper);
+  const std::unique_ptr<LogicalOperator>  &logical_oper();
+  void                                     set_physical_oper(std::unique_ptr<PhysicalOperator> &&oper);
+  const std::unique_ptr<PhysicalOperator> &physical_oper();
+
+private:
+  RC _open(Trx *trx) const;
+
+  std::shared_ptr<SelectSqlNode>      sql_node_;
+  mutable std::shared_ptr<SelectStmt> stmt_;
+  std::unique_ptr<LogicalOperator>    logical_oper_;
+  std::unique_ptr<PhysicalOperator>   physical_oper_;
+  mutable bool                        is_open_         = false;
+  mutable std::vector<Value>          selected_values_;
+  mutable bool                        cached_          = false;
+  mutable size_t                      current_         = 0;
+};
+
+class ExprListExpr : public EnumerableExpr
+{
+public:
+  ExprListExpr(std::vector<std::unique_ptr<Expression>> &&exprs) { exprs_.swap(exprs); }
+
+  virtual ~ExprListExpr() = default;
+
+  RC get_value(const Tuple &tuple, Value &value) const override
+  {
+    RC rc = get_value_with_eof(tuple, value);
+    if (rc == RC::RECORD_EOF)
+    {
+      rc = get_value_with_eof(tuple, value);
+    }
+    return rc;
+  }
+
+  RC get_value_with_eof(const Tuple &tuple, Value &value) const override
+  {
+    if (cur_idx_ >= exprs_.size()) {
+      cur_idx_ = 0;
+      return RC::RECORD_EOF;
+    }
+    return exprs_[cur_idx_++]->get_value(tuple, value);
+  }
+
+  RC try_get_value(Value &value) const override { return RC::UNIMPLEMENTED; }
+
+  ExprType type() const override { return ExprType::EXPRLIST; }
+
+  AttrType value_type() const override { return AttrType::UNDEFINED; }
+
+  std::unique_ptr<Expression> Clone() const override
+  {
+    std::vector<std::unique_ptr<Expression>> new_children;
+    for (auto& expr : exprs_) {
+      new_children.emplace_back(expr->Clone());
+    }
+    auto new_expr = std::make_unique<ExprListExpr>(std::move(new_children));
+    new_expr->set_name(name());
+    return new_expr;
+  }
+private:
+  mutable size_t cur_idx_ = 0;
+  std::vector<std::unique_ptr<Expression>> exprs_;
 };

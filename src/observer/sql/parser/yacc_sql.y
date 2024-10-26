@@ -153,6 +153,8 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         L2_DISTANCE
         COSINE_DISTANCE
         INNER_PRODUCT
+        IN
+        EXISTS
         VECTORS
         QUOTE
         UNIQUE
@@ -200,6 +202,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <number>              number
 %type <string>              relation
 %type <comp>                comp_op
+%type <comp>                exists_op
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
@@ -215,6 +218,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <inner_join>          inner_join_list
 %type <inner_join_unit>     inner_join_rel
 %type <expression>          expression
+%type <expression>          sub_query_expr
 %type <expression>          group_by_expression_list
 %type <expression_list>     expression_list
 %type <expression_list>     group_by
@@ -740,9 +744,14 @@ expression:
     | expression '/' expression {
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::DIV, $1, $3, sql_string, &@$);
     }
-    | LBRACE expression RBRACE {
-      $$ = $2;
+    | LBRACE expression_list RBRACE {
+      if ($2->size() == 1) {
+        $$ = $2->front().release();
+      } else {
+        $$ = new ExprListExpr(std::move(*$2));
+      }
       $$->set_name(token_name(sql_string, &@$));
+      delete $2;
     }
     | '-' expression %prec UMINUS {
       $$ = create_arithmetic_expression(ArithmeticExpr::Type::NEGATIVE, $2, nullptr, sql_string, &@$);
@@ -782,8 +791,19 @@ expression:
     | MAX LBRACE group_by_expression_list RBRACE {
       $$ = create_aggregate_expression("max", $3, sql_string, &@$);
     }
+    | sub_query_expr {
+      $$ = $1;
+    }
     | '*' {
       $$ = new StarExpr();
+    }
+    ;
+
+sub_query_expr:
+    LBRACE select_stmt RBRACE
+    {
+      $$ = new SubQueryExpr(std::move($2->selection));
+      delete $2;
     }
     ;
 
@@ -865,6 +885,13 @@ condition:
     {
       $$ = new ComparisonExpr($2, $1, $3);
     }
+    | exists_op expression
+    {
+      Value val;
+      val.set_null();
+      ValueExpr *value_expr = new ValueExpr(val);
+      $$ = new ComparisonExpr($1, value_expr, $2);
+    }
     | expression IS opt_null
     {
       Value val;
@@ -892,7 +919,14 @@ comp_op:
     | NE { $$ = NOT_EQUAL; }
     | LIKE { $$ = LIKE_OP; }
     | NOT LIKE { $$ = NOT_LIKE_OP; }
+    | IN { $$ = IN_OP; }
+    | NOT IN { $$ = NOT_IN_OP; }
     ;
+
+exists_op:
+  EXISTS { $$ = EXISTS_OP; }
+  | NOT EXISTS { $$ = NOT_EXISTS_OP; }
+  ;
 
 group_by:
     /* empty */

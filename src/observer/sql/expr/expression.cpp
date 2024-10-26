@@ -13,9 +13,13 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/expr/expression.h"
+#include "common/lang/defer.h"
 #include "common/type/vector_type.h"
 #include "sql/expr/tuple.h"
 #include "sql/expr/arithmetic_operator.hpp"
+#include "sql/stmt/select_stmt.h"
+#include "sql/operator/logical_operator.h"
+#include "sql/operator/physical_operator.h"
 #include <regex>
 
 using namespace std;
@@ -176,9 +180,18 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
     return rc;
   }
 
-  if(comp_ != LIKE_OP && comp_ != NOT_LIKE_OP){
-    cmp_result = left.compare(right);
+  switch (comp_)
+  {
+    case EQUAL_TO:
+    case LESS_EQUAL:
+    case NOT_EQUAL:
+    case LESS_THAN:
+    case GREAT_EQUAL:
+    case GREAT_THAN:
+      cmp_result = left.compare(right);
+    default: break;
   }
+
   result         = false;
   switch (comp_) {
     case EQUAL_TO: {
@@ -239,24 +252,86 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
 {
   Value left_value;
   Value right_value;
+  RC    rc = RC::SUCCESS;
 
-  RC rc = left_->get_value(tuple, left_value);
-  if (rc != RC::SUCCESS) {
+  rc = left_->get_value(tuple, left_value);
+  if (rc != RC::SUCCESS)
+  {
     LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
     return rc;
   }
-  rc = right_->get_value(tuple, right_value);
-  if (rc != RC::SUCCESS) {
-    LOG_WARN("failed to get value of right expression. rc=%s", strrc(rc));
-    return rc;
+
+  switch (comp_)
+  {
+    case EXISTS_OP:
+    case NOT_EXISTS_OP:
+    {
+      rc = right_->get_value(tuple, right_value);
+      if (rc != RC::SUCCESS && rc != RC::RECORD_EOF)
+      {
+        LOG_WARN("EXISTS/NOT_EXISTS get right value failed.");
+        return rc;
+      }
+      value.set_boolean(comp_ == EXISTS_OP ? rc == RC::SUCCESS : rc == RC::RECORD_EOF);
+      rc = RC::SUCCESS;
+    } break;
+    
+    case IN_OP:
+    case NOT_IN_OP:
+    {
+      if (left_value.is_null())
+      {
+        value.set_boolean(false);
+        return RC::SUCCESS;
+      }
+
+      bool result = false;
+      bool has_a_null = false;
+      if (right_->type() != ExprType::SUBQUERY && right_->type() != ExprType::EXPRLIST)
+      {
+        LOG_WARN("Expected an enumerable expression after `IN`.");
+        return RC::INVALID_ARGUMENT;
+      }
+      auto sq_expr    = static_cast<const EnumerableExpr *>(right_.get());
+      while (RC::SUCCESS == (rc = sq_expr->get_value_with_eof(tuple, right_value))) {
+        if (right_value.is_null()) { has_a_null = true; }
+        else if (left_value.compare(right_value) == ValCmpRes::EQUAL) { result = true; }
+      }
+
+      value.set_boolean(comp_ == IN_OP ? result : (has_a_null ? false : !result));
+      rc = rc == RC::RECORD_EOF ? RC::SUCCESS : rc;
+    } break;
+
+    default:
+    {
+      rc = right_->get_value(tuple, right_value);
+      if (rc != RC::SUCCESS)
+      {
+        LOG_WARN("failed to get value of right expression. rc=%s", strrc(rc));
+        return rc;
+      }
+
+      bool bool_value = false;
+
+      rc = compare_value(left_value, right_value, bool_value);
+
+      if (right_->type() == ExprType::SUBQUERY || right_->type() == ExprType::EXPRLIST)
+      {
+        auto sq_expr    = static_cast<const EnumerableExpr *>(right_.get());
+        if (sq_expr->get_value_with_eof(tuple, right_value) != RC::RECORD_EOF)
+        {
+          LOG_WARN("Expected a scalar expression to compare.");
+          return RC::INVALID_ARGUMENT;
+        }
+      }
+
+      if (rc == RC::SUCCESS)
+      {
+        value.set_boolean(bool_value);
+      }
+    } break;
   }
 
-  bool bool_value = false;
-
-  rc = compare_value(left_value, right_value, bool_value);
-  if (rc == RC::SUCCESS) {
-    value.set_boolean(bool_value);
-  }
   return rc;
 }
 
@@ -865,3 +940,79 @@ RC FunctionExpr::type_from_string(const char *type_str, FunctionExpr::Type &type
   }
   return rc;
 }
+
+SubQueryExpr::SubQueryExpr(std::shared_ptr<SelectSqlNode> sql_node) : sql_node_(std::move(sql_node)) {}
+SubQueryExpr::SubQueryExpr(SelectSqlNode &&sql_node) :  sql_node_(std::make_shared<SelectSqlNode>(std::move(sql_node))) {}
+SubQueryExpr::~SubQueryExpr()
+{
+  if (is_open_) { physical_oper_->close(); }
+}
+RC SubQueryExpr::get_value(const Tuple &tuple, Value &value) const
+{
+  RC rc = get_value_with_eof(tuple, value);
+  if (rc == RC::RECORD_EOF)
+  {
+    rc = get_value_with_eof(tuple, value);
+  }
+  return rc;
+}
+
+RC SubQueryExpr::get_value_with_eof(const Tuple &tuple, Value &value) const
+{
+  if (cached_)
+  {
+    // ignore the argument tuple
+    try
+    {
+      value = selected_values_.at(current_++);
+      return RC::SUCCESS;
+    }
+    catch(const std::out_of_range& e)
+    {
+      current_ = 0;
+      return RC::RECORD_EOF;
+    }
+  }
+
+  if (!is_open_) { _open(nullptr); }
+  RC rc = physical_oper_->next();
+  if (OB_FAIL(rc))
+  {
+    cached_ |= (rc == RC::RECORD_EOF);
+    return rc;
+  }
+  auto t = physical_oper_->current_tuple();
+  if (t->cell_num() != 1)
+  {
+    t->cell_at(0, value);
+    return RC::INVALID_ARGUMENT;
+  }
+  rc = t->cell_at(0, value);
+
+  if (OB_SUCC(rc))
+  {
+    selected_values_.push_back(value);
+  }
+  return rc;
+}
+
+
+RC SubQueryExpr::_open(Trx* trx) const
+{
+  RC rc = physical_oper_->open(trx);
+  if (OB_FAIL(rc))
+  {
+    LOG_WARN("sub query open failed");
+    return rc;
+  }
+  is_open_ = true;
+  return rc;
+}
+
+const std::shared_ptr<SelectSqlNode>    &SubQueryExpr::sql_node() const { return sql_node_; }
+void                                     SubQueryExpr::set_select_stmt(SelectStmt *stmt) const { stmt_.reset(stmt); }
+const std::shared_ptr<SelectStmt>       &SubQueryExpr::select_stmt() const { return stmt_; }
+void                                     SubQueryExpr::set_logical_oper(std::unique_ptr<LogicalOperator> &&oper) { logical_oper_ = std::move(oper); }
+const std::unique_ptr<LogicalOperator>  &SubQueryExpr::logical_oper() { return logical_oper_; }
+void                                     SubQueryExpr::set_physical_oper(std::unique_ptr<PhysicalOperator> &&oper) { physical_oper_ = std::move(oper); }
+const std::unique_ptr<PhysicalOperator> &SubQueryExpr::physical_oper() { return physical_oper_; }

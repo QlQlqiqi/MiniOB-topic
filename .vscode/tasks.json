@@ -6,7 +6,7 @@
         {
             "label": "build_debug",
             "type": "shell",
-            "command": "bash ${workspaceFolder}/build.sh debug --make -j4",
+            "command": "bash ${workspaceFolder}/build.sh debug --make -j24",
             "problemMatcher": [],
             "dependsOn":["gen_parser"],
             "group": {
