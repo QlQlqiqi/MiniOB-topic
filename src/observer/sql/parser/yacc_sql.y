@@ -94,6 +94,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         GROUP
         ORDER
         ASC
+        HAVING
         TABLE
         TABLES
         INDEX
@@ -219,9 +220,11 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <inner_join_unit>     inner_join_rel
 %type <expression>          expression
 %type <expression>          sub_query_expr
+%type <expression>          aggregate_expr
 %type <expression>          group_by_expression_list
 %type <expression_list>     expression_list
 %type <expression_list>     group_by
+%type <expression>          opt_having
 %type <order_by_list>       order_by_list
 %type <order_by_list>       order_by
 %type <order_unit>          order_unit
@@ -643,7 +646,7 @@ update_kv_list:
     ;
 
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT expression_list FROM rel_list inner_join_list where group_by order_by
+    SELECT expression_list FROM rel_list inner_join_list where group_by opt_having order_by
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -675,8 +678,12 @@ select_stmt:        /*  select 语句的语法解析树*/
       }
 
       if($8 != nullptr){
-        $$->selection.order_by.swap(*$8);
-        delete $8;
+        $$->selection.having_conditions.reset($8);
+      }
+
+      if($9 != nullptr){
+        $$->selection.order_by.swap(*$9);
+        delete $9;
       }
     }
     | SELECT expression_list
@@ -767,6 +774,9 @@ expression:
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
+    | aggregate_expr {
+      $$ = $1;
+    }
     | L2_DISTANCE LBRACE expression COMMA expression RBRACE {
       $$ = create_function_expression(FunctionExpr::Type::L2_DISTANCE, sql_string, $3, $5, &@$);
     }
@@ -776,7 +786,16 @@ expression:
     | INNER_PRODUCT LBRACE expression COMMA expression RBRACE {
       $$ = create_function_expression(FunctionExpr::Type::INNER_PRODUCT, sql_string, $3, $5, &@$);
     }
-    | COUNT LBRACE group_by_expression_list RBRACE {
+    | sub_query_expr {
+      $$ = $1;
+    }
+    | '*' {
+      $$ = new StarExpr();
+    }
+    ;
+
+aggregate_expr:
+    COUNT LBRACE group_by_expression_list RBRACE {
       $$ = create_aggregate_expression("count", $3, sql_string, &@$);
     }
     | SUM LBRACE group_by_expression_list RBRACE {
@@ -791,13 +810,6 @@ expression:
     | MAX LBRACE group_by_expression_list RBRACE {
       $$ = create_aggregate_expression("max", $3, sql_string, &@$);
     }
-    | sub_query_expr {
-      $$ = $1;
-    }
-    | '*' {
-      $$ = new StarExpr();
-    }
-    ;
 
 sub_query_expr:
     LBRACE select_stmt RBRACE
@@ -938,6 +950,16 @@ group_by:
       $$ = $3;
     }
     ;
+
+opt_having:
+  /* empty */
+  {
+    $$ = nullptr;
+  }
+  | HAVING condition
+  {
+    $$ = $2;
+  }
 
 // your code here
 order_by:
