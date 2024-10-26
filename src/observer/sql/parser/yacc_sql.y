@@ -202,6 +202,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <number>              number
 %type <string>              relation
 %type <comp>                comp_op
+%type <comp>                exists_op
 %type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
@@ -876,6 +877,13 @@ condition:
     {
       $$ = new ComparisonExpr($2, $1, $3);
     }
+    | exists_op expression
+    {
+      Value val;
+      val.set_null();
+      ValueExpr *value_expr = new ValueExpr(val);
+      $$ = new ComparisonExpr($1, value_expr, $2);
+    }
     | expression IS opt_null
     {
       Value val;
@@ -906,6 +914,11 @@ comp_op:
     | IN { $$ = IN_OP; }
     | NOT IN { $$ = NOT_IN_OP; }
     ;
+
+exists_op:
+  EXISTS { $$ = EXISTS_OP; }
+  | NOT EXISTS { $$ = NOT_EXISTS_OP; }
+  ;
 
 group_by:
     /* empty */
