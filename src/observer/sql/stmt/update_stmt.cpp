@@ -73,14 +73,6 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     auto &field_meta = *(field_name_map.find(name)->second);
     auto  value      = update.value[i];
 
-    if (auto ftype = field_meta.type(), vtype = value->value_type(); ftype != vtype) {
-      if (!(vtype == AttrType::NULLS && field_meta.nullable()))
-      {
-        LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(ftype), static_cast<int>(vtype));
-        return RC::SCHEMA_FIELD_TYPE_MISMATCH;
-      }
-    }
-
     to_be_updated.emplace_back(std::make_pair(field_meta, std::unique_ptr<Expression>(value)));
   }
 

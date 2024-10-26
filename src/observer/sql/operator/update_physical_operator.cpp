@@ -109,6 +109,14 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         return rc;
       }
 
+      if (auto ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
+        if (!(vtype == AttrType::NULLS && f.nullable()))
+        {
+          LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(ftype), static_cast<int>(vtype));
+          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        }
+      }
+
       switch (v.attr_type()) {
         case AttrType::NULLS: {
           assert(f.nullable());
