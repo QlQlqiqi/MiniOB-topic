@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/stmt.h"
 #include "storage/field/field.h"
 #include "sql/stmt/filter_stmt.h"
+#include <vector>
 
 class Table;
 
@@ -29,8 +30,7 @@ class UpdateStmt : public Stmt
 {
 public:
   UpdateStmt() = default;
-  UpdateStmt(Table *table, const Value *values, int value_amount, const FieldMeta *field_metas, int field_amount,
-      FilterStmt *filter_stmt);
+  UpdateStmt(Table *table, std::vector<std::pair<FieldMeta, Value>> values, FilterStmt *stmt);
 
   ~UpdateStmt() override;
 
@@ -39,18 +39,12 @@ public:
   StmtType  type() const override { return StmtType::UPDATE; }
 
 public:
-  Table           *table() const { return table_; }
-  const Value     *values() const { return values_; }
-  int              value_amount() const { return value_amount_; }
-  const FieldMeta *field_metas() const { return field_metas_; }
-  int              field_amount() const { return field_amount_; }
-  FilterStmt      *filter_stmt() const { return filter_stmt_; }
+  Table                                          *table() const { return table_; }
+  const std::vector<std::pair<FieldMeta, Value>> &values() const { return values_; }
+  FilterStmt                                     *filter_stmt() const { return filter_stmt_; }
 
 private:
-  Table           *table_        = nullptr;
-  const Value     *values_       = nullptr;
-  int              value_amount_ = 0;
-  const FieldMeta *field_metas_  = nullptr;
-  int              field_amount_ = 0;
-  FilterStmt      *filter_stmt_  = nullptr;
+  Table                                   *table_        = nullptr;
+  FilterStmt                              *filter_stmt_  = nullptr;
+  std::vector<std::pair<FieldMeta, Value>> values_;
 };

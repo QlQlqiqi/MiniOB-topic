@@ -74,7 +74,7 @@ public:
 
   /**
    * @brief 获取元组中的Cell的个数
-   * @details 个数应该与tuple_schema一致
+   * @details 个数应该与ema一致
    */
   virtual int cell_num() const = 0;
 
@@ -95,6 +95,12 @@ public:
    * @param[out] cell 返回的cell
    */
   virtual RC find_cell(const TupleCellSpec &spec, Value &cell) const = 0;
+
+
+  /**
+   * 深拷贝方法
+   */
+  virtual std::unique_ptr<Tuple> clone() const = 0;
 
   virtual std::string to_string() const
   {
@@ -143,7 +149,7 @@ public:
         return rc;
       }
 
-      result = this_value.compare(other_value);
+      result =static_cast<int>(this_value.compare(other_value));
       if (0 != result) {
         return rc;
       }
@@ -199,8 +205,19 @@ public:
 
     FieldExpr       *field_expr = speces_[index];
     const FieldMeta *field_meta = field_expr->field().meta();
+    // 如果 field 为 nullable，那么需要先读取一个字节，判断 value 是否为 null
+    bool is_null = false;
+    if(field_meta->nullable()) {
+      is_null = *(this->record_->data() + field_meta->offset()) != 0;
+    }
+    // 如果为 null，那么后续的数据将无意义
+    if(is_null) {
+      cell.set_null();
+      return RC::SUCCESS;
+    }
     cell.set_type(field_meta->type());
-    cell.set_data(this->record_->data() + field_meta->offset(), field_meta->len());
+    cell.set_data(this->record_->data() + field_meta->offset() + field_meta->nullable(),
+        field_meta->len() - field_meta->nullable());
     return RC::SUCCESS;
   }
 
@@ -228,6 +245,18 @@ public:
     }
     return RC::NOTFOUND;
   }
+
+  std::unique_ptr<Tuple> clone() const override{
+    std::unique_ptr<RowTuple> clone_ = make_unique<RowTuple>();
+    clone_->set_record(new Record(*this->record_));
+    clone_->table_ = this->table_;
+    clone_->speces_.reserve(this->speces_.size());
+    for (const FieldExpr* spec: speces_) {
+      clone_->speces_.push_back(new FieldExpr(spec->field()));
+    }
+    return clone_;
+  }
+
 
 #if 0
   RC cell_spec_at(int index, const TupleCellSpec *&spec) const override
@@ -274,6 +303,7 @@ public:
 
   int cell_num() const override { return static_cast<int>(expressions_.size()); }
 
+
   RC cell_at(int index, Value &cell) const override
   {
     if (index < 0 || index >= cell_num()) {
@@ -294,6 +324,11 @@ public:
   }
 
   RC find_cell(const TupleCellSpec &spec, Value &cell) const override { return tuple_->find_cell(spec, cell); }
+
+  std::unique_ptr<Tuple> clone() const override{
+    return nullptr;
+  }
+
 
 #if 0
   RC cell_spec_at(int index, const TupleCellSpec *&spec) const override
@@ -325,6 +360,10 @@ public:
   void set_cells(const std::vector<Value> &cells) { cells_ = cells; }
 
   virtual int cell_num() const override { return static_cast<int>(cells_.size()); }
+
+  std::unique_ptr<Tuple> clone() const override{
+    return std::make_unique<ValueListTuple>(*this);
+  }
 
   virtual RC cell_at(int index, Value &cell) const override
   {
@@ -441,6 +480,14 @@ public:
 
     return right_->find_cell(spec, value);
   }
+
+  std::unique_ptr<Tuple> clone() const override{
+    std::unique_ptr<JoinedTuple> clone_ = make_unique<JoinedTuple>(*this);
+    clone_->set_left(this->left_->clone().release());
+    clone_->set_right(this->right_->clone().release());
+    return clone_;
+  }
+
 
 private:
   Tuple *left_  = nullptr;

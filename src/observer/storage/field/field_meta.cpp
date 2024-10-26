@@ -74,7 +74,13 @@ bool FieldMeta::visible() const { return visible_; }
 
 int FieldMeta::field_id() const { return field_id_; }
 
-bool FieldMeta::nullable() const { return attr_nullable_; }
+// 如果 field 为 nullable，那么这个 field 对应的 value 会比原本多 sizeof(bool)
+// 字节数，attr_len_ 长度为原本数据长度 + sizeof(bool)，这部分在语法分析中处理。
+// 所以在读取或者写入字节的时候，一定要准确其 len
+bool FieldMeta::nullable() const {
+  ASSERT(sizeof(bool) == 1, "sizeof(bool) must be 1");
+  return attr_nullable_;
+}
 
 void FieldMeta::desc(std::ostream &os) const
 {

@@ -43,10 +43,11 @@ RC FloatType::multiply(const Value &left, const Value &right, Value &result) con
 
 RC FloatType::divide(const Value &left, const Value &right, Value &result) const
 {
-  if (right.get_float() > -EPSILON && right.get_float() < EPSILON) {
+  if ((right.get_float() > -EPSILON && right.get_float() < EPSILON) || (right.get_float() == 0)) {
     // NOTE:
     // 设置为浮点数最大值是不正确的。通常的做法是设置为NULL，但是当前的miniob没有NULL概念，所以这里设置为浮点数最大值。
-    result.set_float(numeric_limits<float>::max());
+    // 1 / 0 应该是 null
+    result.set_null();
   } else {
     result.set_float(left.get_float() / right.get_float());
   }
@@ -56,6 +57,38 @@ RC FloatType::divide(const Value &left, const Value &right, Value &result) const
 RC FloatType::negative(const Value &val, Value &result) const
 {
   result.set_float(-val.get_float());
+  return RC::SUCCESS;
+}
+
+int FloatType::cast_cost(AttrType type)
+{
+  if (type == AttrType::INTS) {
+    return 0;
+  }
+  return INT32_MAX;
+}
+
+RC FloatType::cast_to(const Value &val, AttrType type, Value &result) const
+{
+  result.set_type(type);
+  switch (type) {
+    case AttrType::INTS: {
+      result.set_int(val.get_int());
+    } break;
+    case AttrType::FLOATS: {
+      result = val;
+    } break;
+    case AttrType::BOOLEANS: {
+      result.set_boolean(val.get_boolean());
+    } break;
+    case AttrType::NULLS: {
+      result.set_null();
+    } break;
+    default: {
+      LOG_WARN("failed to cast to: from %s to %s", attr_type_to_string(attr_type_), attr_type_to_string(type));
+      return RC::UNSUPPORTED;
+    }
+  }
   return RC::SUCCESS;
 }
 

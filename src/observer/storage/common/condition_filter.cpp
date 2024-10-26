@@ -55,9 +55,12 @@ RC DefaultConditionFilter::init(const ConDesc &left, const ConDesc &right, AttrT
   return RC::SUCCESS;
 }
 
+  // 这里未实现，因为我看代码似乎用不到这里，先注释了
+  // 注释开始
+  /*
 RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
 {
-  const TableMeta &table_meta = table.table_meta();
+  // const TableMeta &table_meta = table.table_meta();
   ConDesc          left;
   ConDesc          right;
 
@@ -116,6 +119,8 @@ RC DefaultConditionFilter::init(Table &table, const ConditionSqlNode &condition)
 
   return init(left, right, type_left, condition.comp);
 }
+  */
+  // 注释结束
 
 bool DefaultConditionFilter::filter(const Record &rec) const
 {
@@ -136,21 +141,20 @@ bool DefaultConditionFilter::filter(const Record &rec) const
     right_value.set_value(right_.value);
   }
 
-  int cmp_result = left_value.compare(right_value);
+  auto cmp_result = left_value.compare(right_value);
 
   switch (comp_op_) {
-    case EQUAL_TO: return 0 == cmp_result;
-    case LESS_EQUAL: return cmp_result <= 0;
-    case NOT_EQUAL: return cmp_result != 0;
-    case LESS_THAN: return cmp_result < 0;
-    case GREAT_EQUAL: return cmp_result >= 0;
-    case GREAT_THAN: return cmp_result > 0;
-
+    case EQUAL_TO: return ValCmpRes::EQUAL == cmp_result;
+    case LESS_EQUAL: return (ValCmpRes::LESS ==  cmp_result) || (ValCmpRes::EQUAL == cmp_result);
+    case NOT_EQUAL: return (ValCmpRes::GREAT == cmp_result) || (ValCmpRes::LESS == cmp_result);
+    case LESS_THAN: return (ValCmpRes::LESS == cmp_result);
+    case GREAT_EQUAL: return (ValCmpRes::GREAT == cmp_result) || (ValCmpRes::EQUAL == cmp_result);
+    case GREAT_THAN: return (ValCmpRes::GREAT == cmp_result);
     default: break;
   }
 
   LOG_PANIC("Never should print this.");
-  return cmp_result;  // should not go here
+  return false;  // should not go here
 }
 
 CompositeConditionFilter::~CompositeConditionFilter()
@@ -173,6 +177,10 @@ RC CompositeConditionFilter::init(const ConditionFilter *filters[], int filter_n
   return init(filters, filter_num, false);
 }
 
+
+  // 这里未实现，因为我看代码似乎用不到这里，先注释了
+  // 注释开始
+  /*
 RC CompositeConditionFilter::init(Table &table, const ConditionSqlNode *conditions, int condition_num)
 {
   if (condition_num == 0) {
@@ -201,6 +209,8 @@ RC CompositeConditionFilter::init(Table &table, const ConditionSqlNode *conditio
   }
   return init((const ConditionFilter **)condition_filters, condition_num, true);
 }
+  */
+  // 注释结束
 
 bool CompositeConditionFilter::filter(const Record &rec) const
 {

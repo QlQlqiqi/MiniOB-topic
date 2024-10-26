@@ -16,14 +16,37 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/update_stmt.h"
 #include "storage/table/table.h"
 #include "storage/trx/trx.h"
+#include <algorithm>
 
 using namespace std;
 
 UpdatePhysicalOperator::UpdatePhysicalOperator(
-    Table *table, std::vector<Value> values, std::vector<FieldMeta> field_metas)
-    : table_(table), values_(std::move(values)), field_metas_(std::move(field_metas))
+    Table *table, std::vector<std::pair<FieldMeta, Value>> values)
+    : table_(table), values_(std::move(values))
 {}
 
+RC UpdatePhysicalOperator::rollback(
+    Trx *trx, std::vector<Record> &deleted_records, std::vector<Record> &inserted_records) const
+{
+  for (auto &record : inserted_records) {
+    RC rc = trx->delete_record(table_, record);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to rollback in delete records: %s", strrc(rc));
+      return rc;
+    }
+  }
+  for (auto &record : deleted_records) {
+    RC rc = trx->insert_record(table_, record);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to rollback in insert records: %s", strrc(rc));
+      return rc;
+    }
+  }
+  LOG_INFO("rollback records success");
+  return RC::SUCCESS;
+}
+
+// TODO(qiqi): 这里有性能问题，在这 delete 和 insert 阶段中，都会将 record 深度复制一遍
 RC UpdatePhysicalOperator::open(Trx *trx)
 {
   if (children_.empty()) {
@@ -52,53 +75,91 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     records_.emplace_back(std::move(record));
   }
 
+  if (rc != RC::RECORD_EOF)
+  {
+    return rc;
+  }
+
   child->close();
 
-  for (Record &record : records_) {
+  // TODO(qiqi): 因为目前没有 trx 功能，所以需要手动恢复
+  std::vector<Record> deleted_records;
+  std::vector<Record> inserted_records;
+
+  for (Record &record : records_){
     Record table_record;
-    table_->get_record(record.rid(), table_record);
+    rc = table_->get_record(record.rid(), table_record);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to get record. rid=%d, rc=%s", record.rid(), strrc(rc));
+      trx->rollback();
+      rollback(trx, deleted_records, inserted_records);
+      return rc;
+    }
 
-    // Prepare a record. BTW, a `record` in `records_` does not refs into the table.
-    for (size_t i = 0; i < values_.size(); ++i) {
-      auto &f = field_metas_[i];
-      // record.set_data_owner(nullptr, 0);
-      RC rc = table_record.set_field(f.offset(), f.len(), values_[i].data());
-      if (rc != RC::SUCCESS) {
-        LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-        trx->rollback();
-        return rc;
-      }
+    // 1. prepare a record...
+    for (auto &item : values_) {
+      auto &f = item.first;
+      auto &v = item.second;
 
-      if (RC rc = trx->delete_record(table_, record); rc != RC::SUCCESS) {
-        LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
-        trx->rollback();
-        return rc;
-      }
-      if (RC rc = trx->insert_record(table_, table_record); rc != RC::SUCCESS) {
-        LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
-        trx->rollback();
-        return rc;
+      switch (v.attr_type()) {
+        case AttrType::NULLS: {
+          assert(f.nullable());
+          auto zeros = std::vector<char>(f.len(), '\1');
+          rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
+          if (OB_FAIL(rc)) {
+            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+            trx->rollback();
+            return rc;
+          }
+        } break;
+        case AttrType::CHARS: {
+          auto zeros = std::vector<char>(f.len(), '\0');
+          rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
+          if (OB_FAIL(rc)) {
+            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+            trx->rollback();
+            return rc;
+          }
+          [[fallthrough]];
+        }
+        default: {
+          rc = table_record.set_field(f.offset() + f.nullable(), v.length() - f.nullable(), v.data());
+          if (OB_FAIL(rc)) {
+            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+            trx->rollback();
+            return rc;
+          }
+        } break;
       }
     }
 
-    /*if (RC rc = trx_->delete_record(table_, old_r); rc != RC::SUCCESS)
-    {
-      LOG_WARN("failed to delete record: %s", strrc(rc));
+    // 2. remove old record...
+    rc = trx->delete_record(table_, record);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
+      trx->rollback();
+      rollback(trx, deleted_records, inserted_records);
       return rc;
     }
-    if (RC rc = trx_->insert_record(table_, new_r); rc != RC::SUCCESS)
-    {
-      LOG_WARN("failed to insert record: %s", strrc(rc));
-      if (RC rc2 = trx_->insert_record(table_, old_r); rc2 != RC::SUCCESS)
-      {
-        LOG_ERROR("failed to rollback old record: %s", strrc(rc2));
-        return rc2;
-      }
+    Record tmp1 = record;
+    tmp1.copy_data(record.data(), record.len());
+    deleted_records.emplace_back(tmp1);
+
+    // 3. insert new record...
+    rc = trx->insert_record(table_, table_record);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
+      trx->rollback();
+      rollback(trx, deleted_records, inserted_records);
       return rc;
-    }*/
+    }
+    Record tmp2 = table_record;
+    tmp2.copy_data(table_record.data(), table_record.len());
+    inserted_records.emplace_back(tmp2);
   }
 
   return RC::SUCCESS;
+
 }
 
 RC UpdatePhysicalOperator::next() { return RC::RECORD_EOF; }

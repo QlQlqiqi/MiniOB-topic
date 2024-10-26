@@ -13,6 +13,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/type/integer_type.h"
 #include "common/type/data_type.h"
 #include "common/type/vector_type.h"
+#include "common/type/null_type.h"
 #include "common/type/date_type.h"
 
 
@@ -21,8 +22,9 @@ array<unique_ptr<DataType>, static_cast<int>(AttrType::MAXTYPE)> DataType::type_
     make_unique<CharType>(),
     make_unique<IntegerType>(),
     make_unique<FloatType>(),
-    make_unique<VectorType>(),
     make_unique<DataType>(AttrType::BOOLEANS),
+    make_unique<VectorType>(),
     make_unique<DateType>(),
+    make_unique<NullType>(),
 
 };

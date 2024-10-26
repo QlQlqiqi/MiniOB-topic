@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/parser/parse_defs.h"
 
 class Db;
+class FilterStmt;
 
 /**
  * @brief Statement SQL语句解析后通过Resolver转换成Stmt
@@ -50,6 +51,7 @@ class Db;
   DEFINE_ENUM_ITEM(EXIT)         \
   DEFINE_ENUM_ITEM(EXPLAIN)      \
   DEFINE_ENUM_ITEM(PREDICATE)    \
+  DEFINE_ENUM_ITEM(ORDERBY)      \
   DEFINE_ENUM_ITEM(SET_VARIABLE)
 
 enum class StmtType

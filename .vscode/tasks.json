@@ -4,23 +4,21 @@
     },
     "tasks": [
         {
-            "label": "cmake",
-            "command": "cmake",
-            "args": [
-                "-DDEBUG=ON",
-                ".."
-            ]
+            "label": "build_debug",
+            "type": "shell",
+            "command": "bash ${workspaceFolder}/build.sh debug --make -j24",
+            "problemMatcher": [],
+            "dependsOn":["gen_parser"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         },
+
         {
-            "label": "make",
-            "command": "make"
-        },
-        {
-            "label": "CMake Build",
-            "dependsOn": [
-                "cmake",
-                "make"
-            ]
+            "label": "gen_parser",
+            "type": "shell",
+            "command": "cd ${workspaceFolder}/src/observer/sql/parser && bash gen_parser.sh"
         }
     ],
     "version": "2.0.0"

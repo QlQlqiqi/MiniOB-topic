@@ -33,19 +33,25 @@ Table *BinderContext::find_table(const char *table_name) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-static void wildcard_fields(Table *table, vector<unique_ptr<Expression>> &expressions)
+static void wildcard_fields(Table *table, vector<unique_ptr<Expression>> &expressions, bool mutil_tables = false)
 {
   const TableMeta &table_meta = table->table_meta();
   const int        field_num  = table_meta.field_num();
   for (int i = table_meta.sys_field_num(); i < field_num; i++) {
     Field      field(table, table_meta.field(i));
     FieldExpr *field_expr = new FieldExpr(field);
-    field_expr->set_name(field.field_name());
+    string     name;
+    if (mutil_tables) {
+      name.append(table_meta.name());
+      name.append(".");
+    }
+    name.append(field.field_name());
+    field_expr->set_name(name.c_str());
     expressions.emplace_back(field_expr);
   }
 }
 
-RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions)
+RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions, bool mutil_tables)
 {
   if (nullptr == expr) {
     return RC::SUCCESS;
@@ -53,11 +59,11 @@ RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique
 
   switch (expr->type()) {
     case ExprType::STAR: {
-      return bind_star_expression(expr, bound_expressions);
+      return bind_star_expression(expr, bound_expressions, mutil_tables);
     } break;
 
     case ExprType::UNBOUND_FIELD: {
-      return bind_unbound_field_expression(expr, bound_expressions);
+      return bind_unbound_field_expression(expr, bound_expressions, mutil_tables);
     } break;
 
     case ExprType::UNBOUND_AGGREGATION: {
@@ -88,6 +94,19 @@ RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique
       return bind_arithmetic_expression(expr, bound_expressions);
     } break;
 
+    case ExprType::FUNCTION: {
+      return bind_function_expression(expr, bound_expressions);
+    } break;
+
+    case ExprType::SUBQUERY: {
+      return bind_subquery_expression(expr, bound_expressions);
+    } break;
+
+    case ExprType::EXPRLIST: {
+      return bind_exprlist_expression(expr, bound_expressions);
+    } break;
+
+
     case ExprType::AGGREGATION: {
       ASSERT(false, "shouldn't be here");
     } break;
@@ -101,7 +120,7 @@ RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique
 }
 
 RC ExpressionBinder::bind_star_expression(
-    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions)
+    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions, bool mutil_tables)
 {
   if (nullptr == expr) {
     return RC::SUCCESS;
@@ -126,14 +145,14 @@ RC ExpressionBinder::bind_star_expression(
   }
 
   for (Table *table : tables_to_wildcard) {
-    wildcard_fields(table, bound_expressions);
+    wildcard_fields(table, bound_expressions, mutil_tables);
   }
 
   return RC::SUCCESS;
 }
 
 RC ExpressionBinder::bind_unbound_field_expression(
-    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions)
+    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions, bool mutil_tables)
 {
   if (nullptr == expr) {
     return RC::SUCCESS;
@@ -161,7 +180,7 @@ RC ExpressionBinder::bind_unbound_field_expression(
   }
 
   if (0 == strcmp(field_name, "*")) {
-    wildcard_fields(table, bound_expressions);
+    wildcard_fields(table, bound_expressions, mutil_tables);
   } else {
     const FieldMeta *field_meta = table->table_meta().field(field_name);
     if (nullptr == field_meta) {
@@ -171,7 +190,14 @@ RC ExpressionBinder::bind_unbound_field_expression(
 
     Field      field(table, field_meta);
     FieldExpr *field_expr = new FieldExpr(field);
-    field_expr->set_name(field_name);
+    // 多表查询需要 table.field
+    std::string name;
+    if (mutil_tables) {
+      name.append(table_name);
+      name.append(".");
+    }
+    name.append(field_name);
+    field_expr->set_name(name.c_str());
     bound_expressions.emplace_back(field_expr);
   }
 
@@ -337,19 +363,91 @@ RC ExpressionBinder::bind_arithmetic_expression(
   }
 
   child_bound_expressions.clear();
-  rc = bind_expression(right_expr, child_bound_expressions);
-  if (OB_FAIL(rc)) {
+  if (right_expr) {
+    rc = bind_expression(right_expr, child_bound_expressions);
+    if (OB_FAIL(rc)) {
+      return rc;
+    }
+
+    if (child_bound_expressions.size() != 1) {
+      LOG_WARN("invalid right children number of comparison expression: %d", child_bound_expressions.size());
+      return RC::INVALID_ARGUMENT;
+    }
+
+    unique_ptr<Expression> &right = child_bound_expressions[0];
+    if (right.get() != right_expr.get()) {
+      right_expr.reset(right.release());
+    }
+  }
+
+  bound_expressions.emplace_back(std::move(expr));
+  return RC::SUCCESS;
+}
+
+RC ExpressionBinder::bind_function_expression(
+    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions)
+{
+  if (nullptr == expr) {
+    return RC::SUCCESS;
+  }
+
+  auto func_expr = static_cast<FunctionExpr *>(expr.get());
+
+  vector<unique_ptr<Expression>> child_bound_expressions;
+  unique_ptr<Expression>        &left_expr  = func_expr->left();
+  unique_ptr<Expression>        &right_expr = func_expr->right();
+
+  RC rc = bind_expression(left_expr, child_bound_expressions);
+  if (rc != RC::SUCCESS) {
     return rc;
   }
 
   if (child_bound_expressions.size() != 1) {
-    LOG_WARN("invalid right children number of comparison expression: %d", child_bound_expressions.size());
+    LOG_WARN("invalid left children number of function expression: %d", child_bound_expressions.size());
+    return RC::INVALID_ARGUMENT;
+  }
+
+  unique_ptr<Expression> &left = child_bound_expressions[0];
+  if (left.get() != left_expr.get()) {
+    left_expr.reset(left.release());
+  }
+
+  child_bound_expressions.clear();
+  rc = bind_expression(right_expr, child_bound_expressions);
+  if (rc != RC::SUCCESS) {
+    return rc;
+  }
+
+  if (child_bound_expressions.size() != 1) {
+    LOG_WARN("invalid right children number of function expression: %d", child_bound_expressions.size());
     return RC::INVALID_ARGUMENT;
   }
 
   unique_ptr<Expression> &right = child_bound_expressions[0];
   if (right.get() != right_expr.get()) {
     right_expr.reset(right.release());
+  }
+
+  bound_expressions.emplace_back(std::move(expr));
+  return RC::SUCCESS;
+}
+
+RC ExpressionBinder::bind_subquery_expression(
+    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions)
+{
+  if (nullptr == expr) {
+    return RC::SUCCESS;
+  }
+
+  bound_expressions.emplace_back(std::move(expr));
+  return RC::SUCCESS;
+}
+
+RC ExpressionBinder::bind_exprlist_expression(
+    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions)
+{
+  if (nullptr == expr) {
+    return RC::SUCCESS;
   }
 
   bound_expressions.emplace_back(std::move(expr));
@@ -419,6 +517,12 @@ RC ExpressionBinder::bind_aggregate_expression(
 
   unique_ptr<Expression>        &child_expr = unbound_aggregate_expr->child();
   vector<unique_ptr<Expression>> child_bound_expressions;
+
+  // an aggregating function with redundant columns, such as: SELECT max(num,price) FROM aggregation_func;
+  if (child_expr == nullptr)
+  {
+    return RC::SQL_SYNTAX;
+  }
 
   if (child_expr->type() == ExprType::STAR && aggregate_type == AggregateExpr::Type::COUNT) {
     ValueExpr *value_expr = new ValueExpr(Value(1));

@@ -19,7 +19,15 @@ See the Mulan PSL v2 for more details. */
 #include "common/type/attr_type.h"
 #include "common/type/data_type.h"
 #include "common/time/datetime.h"
+#include "cassert"
 
+enum class ValCmpRes{
+  LESS = -1,
+  EQUAL = 0,
+  GREAT = 1,
+  CANNOT = INT_MAX,
+  NULL_VAL = INT_MIN,
+};
 /**
  * @brief 属性的值
  * @ingroup DataType
@@ -36,6 +44,7 @@ public:
   friend class BooleanType;
   friend class CharType;
   friend class VectorType;
+  friend class NullType;
   friend class DateType;
   
 
@@ -50,6 +59,7 @@ public:
   explicit Value(bool val);
   explicit Value(common::DateTime val);
   explicit Value(const char *s, int len = 0);
+  explicit Value(const std::vector<double> &v);
 
   Value(const Value &other);
   Value(Value &&other);
@@ -58,6 +68,9 @@ public:
   Value &operator=(Value &&other);
 
   void reset();
+
+  void set_null();
+  bool is_null() const;
 
   static RC add(const Value &left, const Value &right, Value &result)
   {
@@ -86,6 +99,7 @@ public:
 
   static RC cast_to(const Value &value, AttrType to_type, Value &result)
   {
+    assert(&value != &result); // , "We do not support casting a value locally."
     return DataType::type_instance(value.attr_type())->cast_to(value, to_type, result);
   }
 
@@ -94,10 +108,22 @@ public:
   void set_data(const char *data, int length) { this->set_data(const_cast<char *>(data), length); }
   void set_value(const Value &value);
   void set_boolean(bool val);
+  void set_neg();
 
   string to_string() const;
 
-  int compare(const Value &other) const;
+/**
+ * @brief val 的 compare 方法
+ * @return -1: less than other; 0 equal to other; 1 great than other; 
+ *        INT_MAX: cannot compare(include other value is null) or unsupport
+ *        INT_MIN: this value is null
+ */
+  ValCmpRes compare(const Value &other) const;
+
+  /**
+   * 没有转换操作的 compare 
+   */
+  ValCmpRes compare_without_cast(const Value &other) const;
 
   const char *data() const;
 
@@ -115,10 +141,23 @@ public:
   string get_string() const;
   bool   get_boolean() const;
 
+
+  /**
+   * 获取对应的值
+   * 返回 RC::SUCCESS 表示成功获取
+   * 如果当前类型类型与期望类型不符，执行转换，转换失败，返回 RC::INTERNEL 错误
+   */
+  RC    get_int(int& val) const;
+  RC    get_float(float& val) const;
+  RC    get_date(common::DateTime& val)  const;
+  RC    get_string(string& val) const;
+  RC    get_boolean(bool& val) const;
+
 private:
   void set_int(int val);
   void set_float(float val);
   void set_string(const char *s, int len = 0);
+  void set_vector(const char *s, int len);
   void set_date(common::DateTime val);
   void set_string_from_other(const Value &other);
 
@@ -131,10 +170,12 @@ private:
     int32_t int_value_;
     float   float_value_;
     bool    bool_value_;
+    // vector 和 char 存储在相同位置，不过 vector 会将其解析为 double* 进行读取
     char   *pointer_value_;
     common::DateTime date_time_value_;
   } value_ = {.int_value_ = 0};
 
-  /// 是否申请并占有内存, 目前对于 CHARS 类型 own_data_ 为true, 其余类型 own_data_ 为false
+  /// 是否申请并占有内存, 目前对于 CHARS 和 VECTORS 类型 own_data_ 为true,
+  // 其余类型 own_data_ 为false
   bool own_data_ = false;
 };

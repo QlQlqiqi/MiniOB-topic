@@ -17,14 +17,10 @@ See the Mulan PSL v2 for more details. */
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 
-UpdateStmt::UpdateStmt(Table *table, const Value *values, int value_amount, const FieldMeta *field_metas,
-    int field_amount, FilterStmt *stmt)
+UpdateStmt::UpdateStmt(Table *table, std::vector<std::pair<FieldMeta, Value>>values, FilterStmt *stmt)
     : table_(table),
-      values_(values),
-      value_amount_(value_amount),
-      field_metas_(field_metas),
-      field_amount_(field_amount),
-      filter_stmt_(stmt)
+      filter_stmt_(stmt),
+      values_(std::move(values))
 {}
 
 UpdateStmt::~UpdateStmt()
@@ -38,7 +34,8 @@ UpdateStmt::~UpdateStmt()
 RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
 {
   const char *table_name = update.relation_name.c_str();
-  if (nullptr == db || nullptr == table_name) {
+  if (nullptr == db || nullptr == table_name)
+  {
     LOG_WARN("invalid argument. db=%p, table_name=%p",
         db, table_name);
     return RC::INVALID_ARGUMENT;
@@ -46,25 +43,45 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
 
   // check whether the table exists
   Table *table = db->find_table(table_name);
-  if (nullptr == table) {
+  if (nullptr == table)
+  {
     LOG_WARN("no such table. db=%s, table_name=%s", db->name(), table_name);
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
 
-  // check the schema
+  // find out the fields, and check the schema
   const TableMeta              &table_meta    = table->table_meta();
   const std::vector<FieldMeta> *field_metas   = table_meta.field_metas();
-  const FieldMeta              *to_be_updated = nullptr;
-  for (auto &field_meta : *field_metas) {
-    if (strcmp(field_meta.name(), update.attribute_name.c_str()) == 0) {
-      if (auto ftype = field_meta.type(), vtype = update.value.attr_type(); ftype != vtype) {
+
+  std::unordered_map<std::string, const FieldMeta *> field_name_map;
+  for (auto& field_meta : *field_metas)
+  {
+    field_name_map.insert({ field_meta.name(), &field_meta });
+  }
+
+  std::vector<std::pair<FieldMeta, Value>> to_be_updated{};
+
+  ASSERT(update.value.size() == update.attribute_name.size(), "");
+  for (size_t i = 0; i < update.value.size(); ++i)
+  {
+    auto name = update.attribute_name[i];
+    if (!field_name_map.contains(name) || name.empty()) {
+      LOG_WARN("failed to create filter statement. attr=%s", name.c_str());
+      return RC::INVALID_ARGUMENT;
+    }
+
+    auto &field_meta = *(field_name_map.find(name)->second);
+    auto  value      = update.value[i];
+
+    if (auto ftype = field_meta.type(), vtype = value.attr_type(); ftype != vtype) {
+      if (!(vtype == AttrType::NULLS && field_meta.nullable()))
+      {
         LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(ftype), static_cast<int>(vtype));
         return RC::SCHEMA_FIELD_TYPE_MISMATCH;
       }
-      // Only single update supported for now.
-      to_be_updated = &field_meta;
-      break;
     }
+
+    to_be_updated.push_back({ field_meta, std::move(value) });
   }
 
   // filter
@@ -73,14 +90,14 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
 
   FilterStmt *filter_stmt = nullptr;
 
-  RC rc = FilterStmt::create(
-      db, table, &table_map, update.conditions.data(), static_cast<int>(update.conditions.size()), filter_stmt);
-  if (rc != RC::SUCCESS) {
+  RC rc = FilterStmt::create(db, table, &table_map, update.conditions, filter_stmt);
+  if (rc != RC::SUCCESS)
+  {
     LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));
     return rc;
   }
-
+  
   // everything alright
-  stmt = new UpdateStmt(table, &update.value, 1, to_be_updated, 1, filter_stmt);
+  stmt = new UpdateStmt(table, to_be_updated, filter_stmt);
   return RC::SUCCESS;
 }

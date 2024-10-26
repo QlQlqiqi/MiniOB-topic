@@ -197,19 +197,26 @@ RC Table::open(Db *db, const char *meta_file, const char *base_dir)
   const int index_num = table_meta_.index_num();
   for (int i = 0; i < index_num; i++) {
     const IndexMeta *index_meta = table_meta_.index(i);
-    const FieldMeta *field_meta = table_meta_.field(index_meta->field());
-    if (field_meta == nullptr) {
-      LOG_ERROR("Found invalid index meta info which has a non-exists field. table=%s, index=%s, field=%s",
-                name(), index_meta->name(), index_meta->field());
-      // skip cleanup
-      //  do all cleanup action in destructive Table function
-      return RC::INTERNAL;
+    std::vector<const FieldMeta *>  field_metas;
+    const std::vector<std::string> &field_names = index_meta->field();
+    for (size_t j = 0; j < field_names.size(); j++) {
+      const FieldMeta *field_meta = table_meta_.field(field_names[j].c_str());
+      if (field_meta == nullptr) {
+        LOG_ERROR("Found invalid index meta info which has a non-exists field. table=%s, index=%s, index_meta=%s",
+            name(),
+            index_meta->name(),
+            index_meta->to_string().c_str());
+        // skip cleanup
+        //  do all cleanup action in destructive Table function
+        return RC::INTERNAL;
+      }
+      field_metas.emplace_back(field_meta);
     }
 
     BplusTreeIndex *index      = new BplusTreeIndex();
     string          index_file = table_index_file(base_dir, name(), index_meta->name());
 
-    rc = index->open(this, index_file.c_str(), *index_meta, *field_meta);
+    rc = index->open(this, index_file.c_str(), *index_meta, field_metas);
     if (rc != RC::SUCCESS) {
       delete index;
       LOG_ERROR("Failed to open index. table=%s, index=%s, file=%s, rc=%s",
@@ -235,10 +242,14 @@ RC Table::insert_record(Record &record)
 
   rc = insert_entry_of_indexes(record.data(), record.rid());
   if (rc != RC::SUCCESS) {  // 可能出现了键值重复
-    RC rc2 = delete_entry_of_indexes(record.data(), record.rid(), false /*error_on_not_exists*/);
-    if (rc2 != RC::SUCCESS) {
-      LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
+    RC rc2;
+    // 如果 key 重复，则不能删除 index 的 record
+    if (rc != RC::RECORD_DUPLICATE_KEY) {
+      RC rc2 = delete_entry_of_indexes(record.data(), record.rid(), false /*error_on_not_exists*/);
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
                 name(), rc2, strrc(rc2));
+      }
     }
     rc2 = record_handler_->delete_record(&record.rid());
     if (rc2 != RC::SUCCESS) {
@@ -276,10 +287,14 @@ RC Table::recover_insert_record(Record &record)
 
   rc = insert_entry_of_indexes(record.data(), record.rid());
   if (rc != RC::SUCCESS) {  // 可能出现了键值重复
-    RC rc2 = delete_entry_of_indexes(record.data(), record.rid(), false /*error_on_not_exists*/);
-    if (rc2 != RC::SUCCESS) {
-      LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
+    RC rc2;
+    // 如果 key 重复，则不能删除 index 的 record
+    if (rc != RC::RECORD_DUPLICATE_KEY) {
+      RC rc2 = delete_entry_of_indexes(record.data(), record.rid(), false /*error_on_not_exists*/);
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
                 name(), rc2, strrc(rc2));
+      }
     }
     rc2 = record_handler_->delete_record(&record.rid());
     if (rc2 != RC::SUCCESS) {
@@ -337,14 +352,38 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
 
 RC Table::set_value_to_record(char *record_data, const Value &value, const FieldMeta *field)
 {
+  bool is_null = false;
+  // 如果这个数据是 null，那么 field 必须为 nullable。
+  if (value.is_null()) {
+    if(!field->nullable()) {
+      LOG_WARN("failed to insert null record in not null field, field name:%s", field->name());
+      return RC::UNSUPPORTED;
+    }
+    is_null = true;
+  }
+
+  // 如果是 vector，那么其 length 应该与 field 的相同，null 则不考
+  if (!is_null) {
+    if (field->type() == AttrType::VECTORS) {
+      if (field->len() - field->nullable() != value.length()) {
+        LOG_WARN("field's length %d should be the same as value's %d", field->len() - field->nullable(),value.length());
+        return RC::UNSUPPORTED;
+      }
+    }
+  }
+
   size_t       copy_len = field->len();
   const size_t data_len = value.length();
-  if (field->type() == AttrType::CHARS) {
+  if (field->type() == AttrType::CHARS || field->type() == AttrType::VECTORS) {
     if (copy_len > data_len) {
       copy_len = data_len + 1;
     }
   }
-  memcpy(record_data + field->offset(), value.data(), copy_len);
+  // 如果可以为 null，必须先写 sizeof(field->nullable()) 个字节，代表是否为 null
+  memcpy(record_data + field->offset(), &is_null, sizeof(is_null));
+  if (!is_null) {
+    memcpy(record_data + field->offset() + field->nullable(), value.data(), copy_len - field->nullable());
+  }
   return RC::SUCCESS;
 }
 
@@ -392,19 +431,44 @@ RC Table::get_chunk_scanner(ChunkFileScanner &scanner, Trx *trx, ReadWriteMode m
   return rc;
 }
 
-RC Table::create_index(Trx *trx, const FieldMeta *field_meta, const char *index_name)
+RC Table::create_index(Trx *trx, const std::vector<const FieldMeta*> &field_metas, const char *index_name, const bool unique)
 {
-  if (common::is_blank(index_name) || nullptr == field_meta) {
+  if (common::is_blank(index_name) || field_metas.empty()) {
     LOG_INFO("Invalid input arguments, table name is %s, index_name is blank or attribute_name is blank", name());
     return RC::INVALID_ARGUMENT;
   }
 
   IndexMeta new_index_meta;
 
-  RC rc = new_index_meta.init(index_name, *field_meta);
+  RC rc = new_index_meta.init(index_name, field_metas, unique);
   if (rc != RC::SUCCESS) {
+    std::string field_names = field_metas[0]->name();
+    for (int i = 0; i < field_metas.size(); i++) {
+      field_names += ", ";
+      field_names += field_metas[i]->name();
+    }
     LOG_INFO("Failed to init IndexMeta in table:%s, index_name:%s, field_name:%s", 
-             name(), index_name, field_meta->name());
+             name(), index_name, field_names.c_str());
+    return rc;
+  }
+
+  // 确定索引列在表中所有列的排序
+  std::vector<int> field_ids;
+  for (size_t i = 0; i < field_metas.size(); i++) {
+    const FieldMeta *field_meta = field_metas[i];
+    int              field_id   = 0;
+    for (FieldMeta field : *table_meta_.field_metas()) {
+      if (0 == strcmp(field.name(), field_meta->name())) {
+        field_ids.emplace_back(field_id);
+        break;
+      }
+      field_id++;
+    }
+  }
+  if (field_ids.size() != field_metas.size()) {
+    rc = RC::VARIABLE_NOT_VALID;
+    LOG_ERROR("Failed to find column_id for all index_fields, column_id size:%d, index_field size:%d", 
+                field_ids.size(), field_metas.size());
     return rc;
   }
 
@@ -412,7 +476,7 @@ RC Table::create_index(Trx *trx, const FieldMeta *field_meta, const char *index_
   BplusTreeIndex *index      = new BplusTreeIndex();
   string          index_file = table_index_file(base_dir_.c_str(), name(), index_name);
 
-  rc = index->create(this, index_file.c_str(), new_index_meta, *field_meta);
+  rc = index->create(this, index_file.c_str(), new_index_meta, field_ids, field_metas, unique);
   if (rc != RC::SUCCESS) {
     delete index;
     LOG_ERROR("Failed to create bplus tree index. file name=%s, rc=%d:%s", index_file.c_str(), rc, strrc(rc));

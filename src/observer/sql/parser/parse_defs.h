@@ -19,7 +19,6 @@ See the Mulan PSL v2 for more details. */
 #include <memory>
 
 #include "common/value.h"
-
 class Expression;
 
 /**
@@ -53,6 +52,12 @@ enum CompOp
   GREAT_THAN,   ///< ">"
   LIKE_OP,      ///"like"
   NOT_LIKE_OP,      ///"not like"
+  IS_NULL,      ///< is null
+  IS_NOT_NULL,  ///< is not null
+  IN_OP,        ///< in (sub query)
+  NOT_IN_OP,    ///< not in (sub query)
+  EXISTS_OP,    ///< exists (sub query)
+  NOT_EXISTS_OP,///< not exists (sub query)
   NO_OP
 };
 
@@ -64,17 +69,62 @@ enum CompOp
  * 左边和右边理论上都可以是任意的数据，比如是字段（属性，列），也可以是数值常量。
  * 这个结构中记录的仅仅支持字段和值。
  */
-struct ConditionSqlNode
+// struct ConditionSqlNode
+// {
+//   std::unique_ptr<Expression>       left;
+//   // int left_is_attr;              ///< TRUE if left-hand side is an attribute
+//   //                                ///< 1时，操作符左边是属性名，0时，是属性值
+//   // Value          left_value;     ///< left-hand side value if left_is_attr = FALSE
+//   // RelAttrSqlNode left_attr;      ///< left-hand side attribute
+//   CompOp         comp;           ///< comparison operator
+//   // int            right_is_attr;  ///< TRUE if right-hand side is an attribute
+//   //                                ///< 1时，操作符右边是属性名，0时，是属性值
+//   // RelAttrSqlNode right_attr;     ///< right-hand side attribute if right_is_attr = TRUE 右边的属性
+//   // Value          right_value;    ///< right-hand side value if right_is_attr = FALSE
+//   std::unique_ptr<Expression>       right;
+// };
+
+/**
+ * @brief 表示OrderBy 的顺序
+ * @ingroup SQLParser
+ */
+enum class OrderOp{
+  ASC,
+  DESC,
+};
+/**
+ * @brief 描述一个order by语句
+ * @ingroup SQLParser
+ * @details desc table 是查询表结构信息的语句
+ */
+struct OrderBySqlNode
 {
-  int left_is_attr;              ///< TRUE if left-hand side is an attribute
-                                 ///< 1时，操作符左边是属性名，0时，是属性值
-  Value          left_value;     ///< left-hand side value if left_is_attr = FALSE
-  RelAttrSqlNode left_attr;      ///< left-hand side attribute
-  CompOp         comp;           ///< comparison operator
-  int            right_is_attr;  ///< TRUE if right-hand side is an attribute
-                                 ///< 1时，操作符右边是属性名，0时，是属性值
-  RelAttrSqlNode right_attr;     ///< right-hand side attribute if right_is_attr = TRUE 右边的属性
-  Value          right_value;    ///< right-hand side value if right_is_attr = FALSE
+  std::unique_ptr<Expression> unbound_field;
+  OrderOp order_op;
+};
+
+
+/**
+ * @brief 描述一个inner join on 单元
+ * @ingroup SQLParser
+ */
+struct InnerJoinUnit
+{
+  std::string                   relation;  ///< relation to join
+  std::unique_ptr<Expression>   condition; ///< join conditions
+};
+
+/**
+ * @brief 描述一个inner join on语句
+ * @ingroup SQLParser
+ * @details inner join on 支持连续定义
+ * 一个innner join on 语句由两部分组成，分别是innner join, on
+ * on部分表示连接的条件，innner join部分表示要连接的表。
+ */
+struct InnerJoinSqlNode
+{
+  std::vector<std::string>                   relations;   ///< relations to join
+  std::vector<std::unique_ptr<Expression>>   conditions;  ///< join conditions
 };
 
 /**
@@ -92,8 +142,11 @@ struct SelectSqlNode
 {
   std::vector<std::unique_ptr<Expression>> expressions;  ///< 查询的表达式
   std::vector<std::string>                 relations;    ///< 查询的表
-  std::vector<ConditionSqlNode>            conditions;   ///< 查询条件，使用AND串联起来多个条件
+  // std::vector<ConditionSqlNode>            conditions;   ///< 查询条件，使用AND串联起来多个条件
+  std::unique_ptr<Expression>              conditions;  ///< 查询条件
   std::vector<std::unique_ptr<Expression>> group_by;     ///< group by clause
+  std::vector<std::unique_ptr<OrderBySqlNode>> order_by; ///< order by clause
+  std::unique_ptr<InnerJoinSqlNode>        inner_join;   ///< inner join clause
 };
 
 /**
@@ -123,7 +176,8 @@ struct InsertSqlNode
 struct DeleteSqlNode
 {
   std::string                   relation_name;  ///< Relation to delete from
-  std::vector<ConditionSqlNode> conditions;
+  Expression                   *conditions;     ///< 查询条件
+  // std::vector<ConditionSqlNode> conditions;
 };
 
 /**
@@ -133,9 +187,20 @@ struct DeleteSqlNode
 struct UpdateSqlNode
 {
   std::string                   relation_name;   ///< Relation to update
-  std::string                   attribute_name;  ///< 更新的字段，仅支持一个字段
-  Value                         value;           ///< 更新的值，仅支持一个字段
-  std::vector<ConditionSqlNode> conditions;
+  std::vector<std::string>      attribute_name;  ///< 要修改的属性
+  std::vector<Value>            value;           ///< 要更新的值
+  Expression                   *conditions;      ///< 查询条件
+  // std::vector<ConditionSqlNode> conditions;
+};
+
+/**
+ * @brief 描述一个update语句的属性-值列表
+ * @ingroup SQLParser
+ */
+struct KeyValueList
+{
+  std::vector<std::string> attrs; ///< 要修改的属性
+  std::vector<Value> values;      ///< 要更新的值
 };
 
 /**
@@ -182,7 +247,8 @@ struct CreateIndexSqlNode
 {
   std::string index_name;      ///< Index name
   std::string relation_name;   ///< Relation name
-  std::string attribute_name;  ///< Attribute name
+  std::vector<std::string> attr_names;    ///< Attribute names
+  bool unique;                 ///< unique index
 };
 
 /**
@@ -226,6 +292,7 @@ struct SetVariableSqlNode
   std::string name;
   Value       value;
 };
+
 
 class ParsedSqlNode;
 

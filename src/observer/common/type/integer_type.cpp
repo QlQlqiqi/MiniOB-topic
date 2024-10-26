@@ -17,7 +17,10 @@ See the Mulan PSL v2 for more details. */
 int IntegerType::compare(const Value &left, const Value &right) const
 {
   ASSERT(left.attr_type() == AttrType::INTS, "left type is not integer");
-  ASSERT(right.attr_type() == AttrType::INTS || right.attr_type() == AttrType::FLOATS, "right type is not numeric");
+  if(right.attr_type() != AttrType::INTS && right.attr_type() != AttrType::FLOATS) {
+    LOG_WARN("right type %s is not numerics", attr_type_to_string(right.attr_type()));
+    return INT32_MAX;
+  }
   if (right.attr_type() == AttrType::INTS) {
     return common::compare_int((void *)&left.value_.int_value_, (void *)&right.value_.int_value_);
   } else if (right.attr_type() == AttrType::FLOATS) {
@@ -46,9 +49,51 @@ RC IntegerType::multiply(const Value &left, const Value &right, Value &result) c
   return RC::SUCCESS;
 }
 
+RC IntegerType::divide(const Value &left, const Value &right, Value &result) const
+{
+  if (right.get_int() == 0) {
+    result.set_null();
+  } else {
+    result.set_int(left.get_int() / right.get_int());
+  }
+  return RC::SUCCESS;
+}
+
 RC IntegerType::negative(const Value &val, Value &result) const
 {
   result.set_int(-val.get_int());
+  return RC::SUCCESS;
+}
+
+int IntegerType::cast_cost(AttrType type)
+{
+  if (type == AttrType::FLOATS || type == AttrType::NULLS || type == AttrType::BOOLEANS) {
+    return 0;
+  }
+  return INT32_MAX;
+}
+
+RC IntegerType::cast_to(const Value &val, AttrType type, Value &result) const
+{
+  result.set_type(type);
+  switch (type) {
+    case AttrType::INTS: {
+      result = val;
+    } break;
+    case AttrType::FLOATS: {
+      result.set_float(val.get_float());
+    } break;
+    case AttrType::BOOLEANS: {
+      result.set_boolean(val.get_boolean());
+    } break;
+    case AttrType::NULLS: {
+      result.set_null();
+    } break;
+    default: {
+      LOG_WARN("failed to cast to: from %s to %s", attr_type_to_string(attr_type_), attr_type_to_string(type));
+      return RC::UNSUPPORTED;
+    }
+  }
   return RC::SUCCESS;
 }
 
