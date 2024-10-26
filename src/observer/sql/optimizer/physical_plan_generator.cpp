@@ -155,7 +155,7 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
         return RC::SUCCESS;
       };
 
-      RC rc2;
+      RC rc2 = RC::SUCCESS;
       if (auto left  = comparison_expr->left().get();  left->type() == ExprType::SUBQUERY)  { rc2 = f(static_cast<SubQueryExpr *>(left)); }
       if (auto right = comparison_expr->right().get(); right->type() == ExprType::SUBQUERY) { rc2 = f(static_cast<SubQueryExpr *>(right)); }
       if (OB_FAIL(rc2)) {
