@@ -150,7 +150,7 @@ public:
       }
 
       result =static_cast<int>(this_value.compare(other_value));
-      if (0 != result) {
+      if (0 != result && (!this_value.is_null() || !other_value.is_null())) {
         return rc;
       }
     }

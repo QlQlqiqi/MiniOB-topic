@@ -141,6 +141,7 @@ struct SelectSqlNode
   // std::vector<ConditionSqlNode>            conditions;   ///< 查询条件，使用AND串联起来多个条件
   std::unique_ptr<Expression>              conditions;  ///< 查询条件
   std::vector<std::unique_ptr<Expression>> group_by;     ///< group by clause
+  std::unique_ptr<Expression>              having_conditions; ///< having expresssions
   std::vector<std::unique_ptr<OrderBySqlNode>> order_by; ///< order by clause
   std::unique_ptr<InnerJoinSqlNode>        inner_join;   ///< inner join clause
 };

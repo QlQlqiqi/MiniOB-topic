@@ -75,7 +75,8 @@
         "streambuf": "cpp",
         "thread": "cpp",
         "typeinfo": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "*.ipp": "cpp"
     },
     "cmake.debugConfig": {
         "args": ["-f", "../etc/observer.ini", "-P", "cli"]
