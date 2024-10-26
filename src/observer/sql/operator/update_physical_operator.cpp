@@ -46,7 +46,7 @@ RC UpdatePhysicalOperator::rollback(
   return RC::SUCCESS;
 }
 
-// TODO(qiqi): 这里有性能问题，在这 3 个阶段中，都会将 record深度复制一遍
+// TODO(qiqi): 这里有性能问题，在这 delete 和 insert 阶段中，都会将 record 深度复制一遍
 RC UpdatePhysicalOperator::open(Trx *trx)
 {
   if (children_.empty()) {
@@ -72,46 +72,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
 
     RowTuple *row_tuple = static_cast<RowTuple *>(tuple);
     Record   &record    = row_tuple->record();
-    Record    tmp       = record;
-    tmp.copy_data(record.data(), record.len());
-
-    // 1. prepare a record...
-    for (auto &item : values_) {
-      auto &f = item.first;
-      auto &v = item.second;
-      switch (v.attr_type()) {
-        case AttrType::NULLS: {
-          assert(f.nullable());
-          auto zeros = std::vector<char>(f.len(), '\1');
-          rc         = tmp.set_field(f.offset(), f.len(), zeros.data());
-          if (OB_FAIL(rc)) {
-            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-            trx->rollback();
-            return rc;
-          }
-        } break;
-        case AttrType::CHARS: {
-          auto zeros = std::vector<char>(f.len(), '\0');
-          rc         = tmp.set_field(f.offset(), f.len(), zeros.data());
-          if (OB_FAIL(rc)) {
-            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-            trx->rollback();
-            return rc;
-          }
-          [[fallthrough]];
-        }
-        default: {
-          rc = tmp.set_field(f.offset() + f.nullable(), v.length() - f.nullable(), v.data());
-          if (OB_FAIL(rc)) {
-            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-            trx->rollback();
-            return rc;
-          }
-        } break;
-      }
-    }
-
-    records_.emplace_back(std::move(tmp));
+    records_.emplace_back(std::move(record));
   }
 
   if (rc != RC::RECORD_EOF)
@@ -125,8 +86,54 @@ RC UpdatePhysicalOperator::open(Trx *trx)
   std::vector<Record> deleted_records;
   std::vector<Record> inserted_records;
 
-  // 2. remove old record...
   for (Record &record : records_){
+    Record table_record;
+    rc = table_->get_record(record.rid(), table_record);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to get record. rid=%d, rc=%s", record.rid(), strrc(rc));
+      trx->rollback();
+      rollback(trx, deleted_records, inserted_records);
+      return rc;
+    }
+
+    // 1. prepare a record...
+    for (auto &item : values_) {
+      auto &f = item.first;
+      auto &v = item.second;
+
+      switch (v.attr_type()) {
+        case AttrType::NULLS: {
+          assert(f.nullable());
+          auto zeros = std::vector<char>(f.len(), '\1');
+          rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
+          if (OB_FAIL(rc)) {
+            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+            trx->rollback();
+            return rc;
+          }
+        } break;
+        case AttrType::CHARS: {
+          auto zeros = std::vector<char>(f.len(), '\0');
+          rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
+          if (OB_FAIL(rc)) {
+            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+            trx->rollback();
+            return rc;
+          }
+          [[fallthrough]];
+        }
+        default: {
+          rc = table_record.set_field(f.offset() + f.nullable(), v.length() - f.nullable(), v.data());
+          if (OB_FAIL(rc)) {
+            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+            trx->rollback();
+            return rc;
+          }
+        } break;
+      }
+    }
+
+    // 2. remove old record...
     rc = trx->delete_record(table_, record);
     if (OB_FAIL(rc)) {
       LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
@@ -134,23 +141,21 @@ RC UpdatePhysicalOperator::open(Trx *trx)
       rollback(trx, deleted_records, inserted_records);
       return rc;
     }
-    Record tmp = record;
-    tmp.copy_data(record.data(), record.len());
-    deleted_records.emplace_back(tmp);
-  }
+    Record tmp1 = record;
+    tmp1.copy_data(record.data(), record.len());
+    deleted_records.emplace_back(tmp1);
 
-  // 3. insert new record...
-  for (Record &record : records_){
-    rc = trx->insert_record(table_, record);
+    // 3. insert new record...
+    rc = trx->insert_record(table_, table_record);
     if (OB_FAIL(rc)) {
-      LOG_WARN("failed to insert new record. rid=%d, rc=%s", record.rid(), strrc(rc));
+      LOG_WARN("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
       trx->rollback();
       rollback(trx, deleted_records, inserted_records);
       return rc;
     }
-    Record tmp = record;
-    tmp.copy_data(record.data(), record.len());
-    inserted_records.emplace_back(tmp);
+    Record tmp2 = table_record;
+    tmp2.copy_data(table_record.data(), table_record.len());
+    inserted_records.emplace_back(tmp2);
   }
 
   return RC::SUCCESS;
