@@ -18,10 +18,8 @@ See the Mulan PSL v2 for more details. */
 #include "storage/trx/trx.h"
 #include <algorithm>
 
-using namespace std;
-
 UpdatePhysicalOperator::UpdatePhysicalOperator(
-    Table *table, std::vector<std::pair<FieldMeta, Value>> values)
+    Table *table, std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>>&& values)
     : table_(table), values_(std::move(values))
 {}
 
@@ -63,6 +61,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
 
   trx_ = trx;
 
+  RowTuple *row_tuple = nullptr;
   while (OB_SUCC(rc = child->next())) {
     Tuple *tuple = child->current_tuple();
     if (nullptr == tuple) {
@@ -70,7 +69,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
       return rc;
     }
 
-    RowTuple *row_tuple = static_cast<RowTuple *>(tuple);
+    row_tuple = static_cast<RowTuple *>(tuple);
     Record   &record    = row_tuple->record();
     records_.emplace_back(std::move(record));
   }
@@ -99,7 +98,16 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     // 1. prepare a record...
     for (auto &item : values_) {
       auto &f = item.first;
-      auto &v = item.second;
+      Value v;
+      if (nullptr == row_tuple)
+      {
+        return RC::INTERNAL;
+      }
+      RC rc = item.second->get_value(*row_tuple, v);
+      if (OB_FAIL(rc))
+      {
+        return rc;
+      }
 
       switch (v.attr_type()) {
         case AttrType::NULLS: {

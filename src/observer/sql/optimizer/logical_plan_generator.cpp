@@ -238,8 +238,8 @@ RC LogicalPlanGenerator::create_plan(InsertStmt *insert_stmt, unique_ptr<Logical
 
 RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<LogicalOperator> &logical_operator)
 {
-  Table                                   *table = update_stmt->table();
-  std::vector<std::pair<FieldMeta, Value>> values(update_stmt->values());
+  Table *table  = update_stmt->table();
+  auto  &values = const_cast<std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>>&>(update_stmt->values());
 
   FilterStmt                 *filter_stmt = update_stmt->filter_stmt();
   unique_ptr<LogicalOperator> table_get_oper(new TableGetLogicalOperator(table, ReadWriteMode::READ_WRITE));

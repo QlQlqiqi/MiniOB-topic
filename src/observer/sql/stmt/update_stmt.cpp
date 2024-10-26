@@ -17,7 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 
-UpdateStmt::UpdateStmt(Table *table, std::vector<std::pair<FieldMeta, Value>>values, FilterStmt *stmt)
+UpdateStmt::UpdateStmt(Table *table, std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>> values, FilterStmt *stmt)
     : table_(table),
       filter_stmt_(stmt),
       values_(std::move(values))
@@ -59,7 +59,7 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
     field_name_map.insert({ field_meta.name(), &field_meta });
   }
 
-  std::vector<std::pair<FieldMeta, Value>> to_be_updated{};
+  std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>> to_be_updated{};
 
   ASSERT(update.value.size() == update.attribute_name.size(), "");
   for (size_t i = 0; i < update.value.size(); ++i)
@@ -73,7 +73,7 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
     auto &field_meta = *(field_name_map.find(name)->second);
     auto  value      = update.value[i];
 
-    if (auto ftype = field_meta.type(), vtype = value.attr_type(); ftype != vtype) {
+    if (auto ftype = field_meta.type(), vtype = value->value_type(); ftype != vtype) {
       if (!(vtype == AttrType::NULLS && field_meta.nullable()))
       {
         LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(ftype), static_cast<int>(vtype));
@@ -81,7 +81,7 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
       }
     }
 
-    to_be_updated.push_back({ field_meta, std::move(value) });
+    to_be_updated.emplace_back(std::make_pair(field_meta, std::unique_ptr<Expression>(value)));
   }
 
   // filter
@@ -98,6 +98,6 @@ RC UpdateStmt::create(Db *db, UpdateSqlNode &update, Stmt *&stmt)
   }
   
   // everything alright
-  stmt = new UpdateStmt(table, to_be_updated, filter_stmt);
+  stmt = new UpdateStmt(table, std::move(to_be_updated), filter_stmt);
   return RC::SUCCESS;
 }
