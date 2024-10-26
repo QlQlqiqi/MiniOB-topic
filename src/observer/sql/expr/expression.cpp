@@ -219,11 +219,11 @@ RC ComparisonExpr::compare_value(const Value &left, const Value &right, bool &re
       result = !str_like(left, right);
     } break;
     case IN_OP: {
-      LOG_WARN("unsupported comparison. %d", comp_);
+      LOG_WARN("should not be here. %d", comp_);
       rc = RC::INTERNAL;
     } break;
     case NOT_IN_OP: {
-      LOG_WARN("unsupported comparison. %d", comp_);
+      LOG_WARN("should not be here. %d", comp_);
       rc = RC::INTERNAL;
     } break;
     default: {
@@ -262,6 +262,13 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
   Value right_value;
   RC    rc = RC::SUCCESS;
 
+  rc = left_->get_value(tuple, left_value);
+  if (rc != RC::SUCCESS)
+  {
+    LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
+    return rc;
+  }
+
   switch (comp_)
   {
     case EXISTS_OP:
@@ -288,8 +295,13 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
 
       bool result = false;
       bool has_a_null = false;
-      while (RC::SUCCESS == (rc = right_->get_value(tuple, right_value)))
+      if (right_->type() != ExprType::SUBQUERY)
       {
+        LOG_WARN("There should be a sub query clause");
+        return RC::INVALID_ARGUMENT;
+      }
+      auto sq_expr    = static_cast<const SubQueryExpr *>(right_.get());
+      while (RC::SUCCESS == (rc = sq_expr->get_value_with_eof(tuple, right_value))) {
         if (right_value.is_null()) { has_a_null = true; }
         else if (left_value.compare(right_value) == ValCmpRes::EQUAL) { result = true; }
       }
@@ -300,13 +312,6 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
 
     default:
     {
-      rc = left_->get_value(tuple, left_value);
-      if (rc != RC::SUCCESS)
-      {
-        LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
-        return rc;
-      }
-
       rc = right_->get_value(tuple, right_value);
       if (rc != RC::SUCCESS)
       {
@@ -941,11 +946,53 @@ SubQueryExpr::~SubQueryExpr()
 }
 RC SubQueryExpr::get_value(const Tuple &tuple, Value &value) const
 {
-  if (!is_open_) { _open(nullptr); }
-  physical_oper_->set_parent(&tuple);
-  if (RC rc = physical_oper_->next(); OB_FAIL(rc)) { return rc; }
-  return physical_oper_->current_tuple()->cell_at(0, value);
+  RC rc = get_value_with_eof(tuple, value);
+  if (rc == RC::RECORD_EOF)
+  {
+    rc = get_value_with_eof(tuple, value);
+  }
+  return rc;
 }
+
+RC SubQueryExpr::get_value_with_eof(const Tuple &tuple, Value &value) const
+{
+  if (cached_)
+  {
+    // ignore the argument tuple
+    try
+    {
+      value = selected_values_.at(current_++);
+      return RC::SUCCESS;
+    }
+    catch(const std::out_of_range& e)
+    {
+      current_ = 0;
+      return RC::RECORD_EOF;
+    }
+  }
+
+  if (!is_open_) { _open(nullptr); }
+  RC rc = physical_oper_->next();
+  if (OB_FAIL(rc))
+  {
+    cached_ |= (rc == RC::RECORD_EOF);
+    return rc;
+  }
+  auto t = physical_oper_->current_tuple();
+  if (t->cell_num() != 1)
+  {
+    t->cell_at(0, value);
+    return RC::INVALID_ARGUMENT;
+  }
+  rc = t->cell_at(0, value);
+
+  if (OB_SUCC(rc))
+  {
+    selected_values_.push_back(value);
+  }
+  return rc;
+}
+
 
 RC SubQueryExpr::_open(Trx* trx) const
 {

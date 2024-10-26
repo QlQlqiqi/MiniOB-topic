@@ -580,6 +580,7 @@ public:
   virtual ~SubQueryExpr();
 
   RC get_value(const Tuple &tuple, Value &value) const override;
+  RC get_value_with_eof(const Tuple &tuple, Value &value) const;
 
   ExprType type() const override { return ExprType::SUBQUERY; }
 
@@ -607,5 +608,8 @@ private:
   mutable std::shared_ptr<SelectStmt> stmt_;
   std::unique_ptr<LogicalOperator>    logical_oper_;
   std::unique_ptr<PhysicalOperator>   physical_oper_;
-  mutable bool                        is_open_       = false;
+  mutable bool                        is_open_         = false;
+  mutable std::vector<Value>          selected_values_;
+  mutable bool                        cached_          = false;
+  mutable size_t                      current_         = 0;
 };
