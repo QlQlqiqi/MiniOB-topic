@@ -96,14 +96,13 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     }
 
     // 1. prepare a record...
-    for (auto &item : values_) {
-      auto &f = item.first;
+    for (auto &[f, expr] : values_) {
       Value v;
       if (nullptr == row_tuple)
       {
         return RC::INTERNAL;
       }
-      RC rc = item.second->get_value(*row_tuple, v);
+      RC rc = expr->get_value(*row_tuple, v);
       if (OB_FAIL(rc))
       {
         return rc;
@@ -114,6 +113,16 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         {
           LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(ftype), static_cast<int>(vtype));
           return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        }
+      }
+
+      if (expr->type() == ExprType::SUBQUERY || expr->type() == ExprType::EXPRLIST)
+      {
+        auto sq_expr    = static_cast<const EnumerableExpr *>(expr.get());
+        if (sq_expr->get_value_with_eof(*row_tuple, v) != RC::RECORD_EOF)
+        {
+          LOG_WARN("Expected a scalar expression to update.");
+          return RC::INVALID_ARGUMENT;
         }
       }
 
