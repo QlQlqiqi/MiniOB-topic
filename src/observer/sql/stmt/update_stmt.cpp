@@ -35,8 +35,8 @@ UpdateStmt::~UpdateStmt()
 RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
 {
   const char *table_name = update.relation_name.c_str();
-  if (nullptr == db || nullptr == table_name)
-  {
+  const string& table_alias = update.relation_alias;
+  if (nullptr == db || nullptr == table_name) {
     LOG_WARN("invalid argument. db=%p, table_name=%p",
         db, table_name);
     return RC::INVALID_ARGUMENT;
@@ -91,7 +91,9 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
   // filter
   std::unordered_map<std::string, Table *> table_map;
   table_map.insert(std::pair<std::string, Table *>(std::string(table_name), table));
-
+  if(!table_alias.empty()){
+      table_map.insert({table_alias, table});
+  }
   FilterStmt *filter_stmt = nullptr;
 
   RC rc = FilterStmt::create(db, table, &table_map, update.conditions, filter_stmt);

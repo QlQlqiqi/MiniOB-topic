@@ -95,38 +95,39 @@ extern int yydebug;
     OR = 301,
     SET = 302,
     ON = 303,
-    LOAD = 304,
-    DATA = 305,
-    INFILE = 306,
-    EXPLAIN = 307,
-    STORAGE = 308,
-    FORMAT = 309,
-    EQ = 310,
-    LT = 311,
-    GT = 312,
-    LE = 313,
-    GE = 314,
-    NE = 315,
-    LIKE = 316,
-    COUNT = 317,
-    SUM = 318,
-    AVG = 319,
-    MAX = 320,
-    MIN = 321,
-    L2_DISTANCE = 322,
-    COSINE_DISTANCE = 323,
-    INNER_PRODUCT = 324,
-    IN = 325,
-    EXISTS = 326,
-    VECTORS = 327,
-    QUOTE = 328,
-    UNIQUE = 329,
-    NUMBER = 330,
-    FLOAT = 331,
-    ID = 332,
-    SSS = 333,
-    DATE_STR = 334,
-    UMINUS = 335
+    AS = 304,
+    LOAD = 305,
+    DATA = 306,
+    INFILE = 307,
+    EXPLAIN = 308,
+    STORAGE = 309,
+    FORMAT = 310,
+    EQ = 311,
+    LT = 312,
+    GT = 313,
+    LE = 314,
+    GE = 315,
+    NE = 316,
+    LIKE = 317,
+    COUNT = 318,
+    SUM = 319,
+    AVG = 320,
+    MAX = 321,
+    MIN = 322,
+    L2_DISTANCE = 323,
+    COSINE_DISTANCE = 324,
+    INNER_PRODUCT = 325,
+    IN = 326,
+    EXISTS = 327,
+    VECTORS = 328,
+    QUOTE = 329,
+    UNIQUE = 330,
+    NUMBER = 331,
+    FLOAT = 332,
+    ID = 333,
+    SSS = 334,
+    DATE_STR = 335,
+    UMINUS = 336
   };
 #endif
 
@@ -134,7 +135,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 164 "yacc_sql.y"
+#line 165 "yacc_sql.y"
 
   ParsedSqlNode *                            sql_node;
   Value *                                    value;
@@ -160,7 +161,7 @@ union YYSTYPE
   double                                     float_number;
   KeyValueList *                             kv_list;
 
-#line 164 "yacc_sql.hpp"
+#line 165 "yacc_sql.hpp"
 
 };
 typedef union YYSTYPE YYSTYPE;

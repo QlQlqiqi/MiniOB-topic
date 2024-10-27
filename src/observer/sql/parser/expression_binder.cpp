@@ -24,12 +24,15 @@ using namespace common;
 
 Table *BinderContext::find_table(const char *table_name) const
 {
-  auto pred = [table_name](Table *table) { return 0 == strcasecmp(table_name, table->name()); };
-  auto iter = ranges::find_if(query_tables_, pred);
-  if (iter == query_tables_.end()) {
+  if(table_name == nullptr){
     return nullptr;
   }
-  return *iter;
+
+  if(query_table_maps_.count(table_name) == 0){
+    return nullptr;
+  }
+
+  return query_table_maps_.at(table_name);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -140,7 +143,7 @@ RC ExpressionBinder::bind_star_expression(
 
     tables_to_wildcard.push_back(table);
   } else {
-    const vector<Table *> &all_tables = context_.query_tables();
+    const set<Table *> &all_tables = context_.query_tables();
     tables_to_wildcard.insert(tables_to_wildcard.end(), all_tables.begin(), all_tables.end());
   }
 
@@ -170,7 +173,7 @@ RC ExpressionBinder::bind_unbound_field_expression(
       return RC::SCHEMA_TABLE_NOT_EXIST;
     }
 
-    table = context_.query_tables()[0];
+    table = *(context_.query_tables().begin());
   } else {
     table = context_.find_table(table_name);
     if (nullptr == table) {
