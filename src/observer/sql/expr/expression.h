@@ -573,6 +573,7 @@ class EnumerableExpr : public Expression
 {
 public:
   virtual RC get_value_with_eof(const Tuple &tuple, Value &value) const = 0;
+  virtual bool is_scalar(const Tuple &tuple) const = 0;
 };
 
 class SelectSqlNode;
@@ -588,6 +589,13 @@ public:
 
   RC get_value(const Tuple &tuple, Value &value) const override;
   RC get_value_with_eof(const Tuple &tuple, Value &value) const override;
+  bool is_scalar(const Tuple &tuple) const override
+  {
+    if (selected_values_.size() > 1) { return false; }
+    Value v;
+    while (OB_SUCC(get_value_with_eof(tuple, v)));
+    return selected_values_.size() == 1;
+  }
 
   ExprType type() const override { return ExprType::SUBQUERY; }
 
@@ -646,6 +654,8 @@ public:
     }
     return exprs_[cur_idx_++]->get_value(tuple, value);
   }
+
+  bool is_scalar(const Tuple &tuple) const override { return exprs_.size() == 1; }
 
   RC try_get_value(Value &value) const override { return RC::UNIMPLEMENTED; }
 

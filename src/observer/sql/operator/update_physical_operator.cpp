@@ -74,6 +74,18 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     records_.emplace_back(std::move(record));
   }
 
+  // 这里无论有没有要更新的record都要检查expr是否为标量表达式
+  for (auto &[_, expr] : values_) {
+    if (expr->type() == ExprType::SUBQUERY || expr->type() == ExprType::EXPRLIST)
+    {
+      auto sq_expr    = static_cast<const EnumerableExpr *>(expr.get());
+      if (!sq_expr->is_scalar(RowTuple{})) {
+        LOG_WARN("Expected a scalar expression to update.");
+        return RC::INVALID_ARGUMENT;
+      }
+    }
+  }
+
   if (rc != RC::RECORD_EOF)
   {
     return rc;
@@ -108,21 +120,12 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         return rc;
       }
 
+
       if (auto ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
         if (!(vtype == AttrType::NULLS && f.nullable()))
         {
           LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(ftype), static_cast<int>(vtype));
           return RC::SCHEMA_FIELD_TYPE_MISMATCH;
-        }
-      }
-
-      if (expr->type() == ExprType::SUBQUERY || expr->type() == ExprType::EXPRLIST)
-      {
-        auto sq_expr    = static_cast<const EnumerableExpr *>(expr.get());
-        if (sq_expr->get_value_with_eof(*row_tuple, v) != RC::RECORD_EOF)
-        {
-          LOG_WARN("Expected a scalar expression to update.");
-          return RC::INVALID_ARGUMENT;
         }
       }
 
