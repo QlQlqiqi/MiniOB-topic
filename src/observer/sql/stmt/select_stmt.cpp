@@ -73,8 +73,6 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     table_map.insert({table_name, table});
   }
 
-
-
   // inner join statement
   std::unordered_map<Table* , std::unique_ptr<FilterStmt>> join_conditions;
   if(select_sql.inner_join != nullptr){

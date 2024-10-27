@@ -97,6 +97,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         HAVING
         TABLE
         TABLES
+        VIEW
         INDEX
         CALC
         SELECT
@@ -151,6 +152,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         AVG
         MAX
         MIN
+        AS
         L2_DISTANCE
         COSINE_DISTANCE
         INNER_PRODUCT
@@ -173,6 +175,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
   std::vector<Value> *                       value_list;
   std::vector<RelAttrSqlNode> *              rel_attr_list;
   std::vector<std::string> *                 relation_list;
+  std::vector<std::string> *                 id_list;
   std::vector<std::unique_ptr<OrderBySqlNode>>* order_by_list;
   OrderBySqlNode*                            order_unit;
   OrderOp                                    order_op;
@@ -212,6 +215,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <bools>               opt_unique
 %type <value>               insert_value
 %type <value_list>          value_list
+%type <id_list>             view_brace_id_list
 %type <kv_list>             update_kv_list
 %type <expression>          where
 %type <string>              storage_format
@@ -238,6 +242,8 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <sql_node>            drop_table_stmt
 %type <sql_node>            show_tables_stmt
 %type <sql_node>            desc_table_stmt
+%type <sql_node>            create_view_stmt
+%type <sql_node>            drop_view_stmt
 %type <sql_node>            create_index_stmt
 %type <sql_node>            drop_index_stmt
 %type <sql_node>            sync_stmt
@@ -278,6 +284,8 @@ command_wrapper:
   | drop_table_stmt
   | show_tables_stmt
   | desc_table_stmt
+  | create_view_stmt
+  | drop_view_stmt
   | create_index_stmt
   | drop_index_stmt
   | sync_stmt
@@ -326,6 +334,30 @@ rollback_stmt:
     }
     ;
 
+create_table_stmt:    /*create table 语句的语法解析树*/
+    CREATE TABLE ID LBRACE attr_def attr_def_list RBRACE storage_format
+    {
+      $$ = new ParsedSqlNode(SCF_CREATE_TABLE);
+      CreateTableSqlNode &create_table = $$->create_table;
+      create_table.relation_name = $3;
+      free($3);
+
+      std::vector<AttrInfoSqlNode> *src_attrs = $6;
+
+      if (src_attrs != nullptr) {
+        create_table.attr_infos.swap(*src_attrs);
+        delete src_attrs;
+      }
+      create_table.attr_infos.emplace_back(*$5);
+      std::reverse(create_table.attr_infos.begin(), create_table.attr_infos.end());
+      delete $5;
+      if ($8 != nullptr) {
+        create_table.storage_format = $8;
+        free($8);
+      }
+    }
+    ;
+
 drop_table_stmt:    /*drop table 语句的语法解析树*/
     DROP TABLE ID {
       $$ = new ParsedSqlNode(SCF_DROP_TABLE);
@@ -346,6 +378,36 @@ desc_table_stmt:
       free($2);
     }
     ;
+
+
+create_view_stmt:    /*create view 语句的语法解析树*/
+     CREATE VIEW ID view_brace_id_list AS select_stmt
+    {
+      $$ = new ParsedSqlNode(SCF_CREATE_VIEW);
+      CreateViewSqlNode &create_view = $$->create_view;
+      create_view.view_name = $3;
+      free($3);
+      if ($4 != nullptr) {
+        create_view.attr_ids.swap(*$4);
+        delete $4;
+      } 
+      if($6 != nullptr){
+        create_view.select_stmt.reset($6);
+        create_view.select_sql = token_name(sql_string, &@6);
+      }else{
+        yyerror(&@$, sql_string, sql_result, scanner, "error");
+        YYERROR;
+      }
+    }
+    ;
+
+drop_view_stmt:    /*drop view 语句的语法解析树*/
+    DROP VIEW ID {
+      $$ = new ParsedSqlNode(SCF_DROP_VIEW);
+      $$->drop_view.view_name = $3;
+      free($3);
+    };
+
 
 create_index_stmt:    /*create index 语句的语法解析树*/
     CREATE opt_unique INDEX ID ON ID LBRACE ID idx_col_list RBRACE
@@ -374,6 +436,21 @@ opt_unique:
       $$ = true;
     }
     ;
+
+view_brace_id_list:
+    {
+      $$ = nullptr;
+    }
+    | LBRACE ID idx_col_list RBRACE {
+      if ($3 == nullptr) {
+        $$ = new std::vector<std::string>();
+      } else {
+        $$ = $3;
+      }
+      $$->push_back($2);
+      free($2);
+      std::reverse($$->begin(), $$->end());
+    }
 idx_col_list:
     /* empty */
     {
@@ -397,29 +474,7 @@ drop_index_stmt:      /*drop index 语句的语法解析树*/
       free($5);
     }
     ;
-create_table_stmt:    /*create table 语句的语法解析树*/
-    CREATE TABLE ID LBRACE attr_def attr_def_list RBRACE storage_format
-    {
-      $$ = new ParsedSqlNode(SCF_CREATE_TABLE);
-      CreateTableSqlNode &create_table = $$->create_table;
-      create_table.relation_name = $3;
-      free($3);
 
-      std::vector<AttrInfoSqlNode> *src_attrs = $6;
-
-      if (src_attrs != nullptr) {
-        create_table.attr_infos.swap(*src_attrs);
-        delete src_attrs;
-      }
-      create_table.attr_infos.emplace_back(*$5);
-      std::reverse(create_table.attr_infos.begin(), create_table.attr_infos.end());
-      delete $5;
-      if ($8 != nullptr) {
-        create_table.storage_format = $8;
-        free($8);
-      }
-    }
-    ;
 attr_def_list:
     /* empty */
     {
