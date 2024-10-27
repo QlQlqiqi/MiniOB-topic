@@ -98,14 +98,16 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     // 1. prepare a record...
     for (auto &[f, expr] : values_) {
       Value v;
-      if (nullptr == row_tuple)
-      {
+      if (nullptr == row_tuple) {
         return RC::INTERNAL;
       }
       RC rc = expr->get_value(*row_tuple, v);
-      if (OB_FAIL(rc))
-      {
-        return rc;
+      if (OB_FAIL(rc)) {
+        if (rc == RC::RECORD_EOF) {
+          v.set_null();
+        } else {
+          return rc;
+        }
       }
 
       if (auto ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
@@ -129,8 +131,8 @@ RC UpdatePhysicalOperator::open(Trx *trx)
       switch (v.attr_type()) {
         case AttrType::NULLS: {
           assert(f.nullable());
-          auto zeros = std::vector<char>(f.len(), '\1');
-          rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
+          auto ones = std::vector<char>(f.len(), '\1');
+          rc        = table_record.set_field(f.offset(), f.len(), ones.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             trx->rollback();
