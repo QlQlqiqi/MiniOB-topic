@@ -74,18 +74,6 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     records_.emplace_back(std::move(record));
   }
 
-  // 这里无论有没有要更新的record都要检查expr是否为标量表达式，似乎与MySQL不同
-  for (auto &[_, expr] : values_) {
-    if (expr->type() == ExprType::SUBQUERY || expr->type() == ExprType::EXPRLIST)
-    {
-      auto sq_expr    = static_cast<const EnumerableExpr *>(expr.get());
-      if (!sq_expr->is_scalar(RowTuple{}) && !sq_expr->empty(RowTuple{})) {
-        LOG_WARN("Expected a scalar expression to update.");
-        return RC::INVALID_ARGUMENT;
-      }
-    }
-  }
-
   if (rc != RC::RECORD_EOF)
   {
     return rc;
@@ -110,18 +98,14 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     // 1. prepare a record...
     for (auto &[f, expr] : values_) {
       Value v;
-      if (nullptr == row_tuple) {
+      if (nullptr == row_tuple)
+      {
         return RC::INTERNAL;
       }
       RC rc = expr->get_value(*row_tuple, v);
-      if (OB_FAIL(rc)) {
-        if (rc == RC::RECORD_EOF) {
-          v.set_null();
-        } else {
-          std::cout << "OJ FAIL MESSAGE: update get_value failed!";
-          return rc;
-        }
-
+      if (OB_FAIL(rc))
+      {
+        return rc;
       }
 
       if (auto ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
@@ -132,11 +116,21 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         }
       }
 
+      if (expr->type() == ExprType::SUBQUERY || expr->type() == ExprType::EXPRLIST)
+      {
+        auto sq_expr    = static_cast<const EnumerableExpr *>(expr.get());
+        if (sq_expr->get_value_with_eof(*row_tuple, v) != RC::RECORD_EOF)
+        {
+          LOG_WARN("Expected a scalar expression to update.");
+          return RC::INVALID_ARGUMENT;
+        }
+      }
+
       switch (v.attr_type()) {
         case AttrType::NULLS: {
           assert(f.nullable());
-          auto ones = std::vector<char>(f.len(), '\1');
-          rc        = table_record.set_field(f.offset(), f.len(), ones.data());
+          auto zeros = std::vector<char>(f.len(), '\1');
+          rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             trx->rollback();
