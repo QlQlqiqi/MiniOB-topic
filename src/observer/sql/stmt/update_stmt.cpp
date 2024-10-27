@@ -13,6 +13,7 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/stmt/update_stmt.h"
+#include "sql/stmt/select_stmt.h"
 #include "common/log/log.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
@@ -72,6 +73,17 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
 
     auto &field_meta = *(field_name_map.find(name)->second);
     auto  value      = update.value[i];
+
+    if (value->type() == ExprType::SUBQUERY) {
+      SubQueryExpr* subquery_expr = static_cast<SubQueryExpr*>(value);
+      Stmt * select_stmt = nullptr;
+      if (RC rc = SelectStmt::create(db, *subquery_expr->sql_node(), select_stmt); RC::SUCCESS != rc) {
+        LOG_WARN("create sub query stmt failed, rc=%s", strrc(rc));
+        return rc;
+      }
+
+      subquery_expr->set_select_stmt(static_cast<SelectStmt*>(select_stmt));
+    }
 
     to_be_updated.emplace_back(std::make_pair(field_meta, std::unique_ptr<Expression>(value)));
   }
