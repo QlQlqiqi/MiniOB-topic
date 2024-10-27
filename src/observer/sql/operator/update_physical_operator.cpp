@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/update_stmt.h"
 #include "storage/table/table.h"
 #include "storage/trx/trx.h"
+#include "event/sql_debug.h"
 #include <algorithm>
 
 UpdatePhysicalOperator::UpdatePhysicalOperator(
@@ -89,6 +90,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     Record table_record;
     rc = table_->get_record(record.rid(), table_record);
     if (OB_FAIL(rc)) {
+      sql_debug("failed to get record. rid=%d, rc=%s", record.rid(), strrc(rc));
       LOG_WARN("failed to get record. rid=%d, rc=%s", record.rid(), strrc(rc));
       trx->rollback();
       rollback(trx, deleted_records, inserted_records);
@@ -105,6 +107,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
       if (OB_FAIL(rc)) {
         if (rc == RC::RECORD_EOF) {
           v.set_null();
+          sql_debug("value to update is null now, beacuse the sub query is empty.");
         } else {
           return rc;
         }
@@ -113,6 +116,10 @@ RC UpdatePhysicalOperator::open(Trx *trx)
       if (auto ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
         if (!(vtype == AttrType::NULLS && f.nullable()))
         {
+          sql_debug("schema mismatch. field(%s) type: %d, value type: %d",
+              f.name(),
+              static_cast<int>(ftype),
+              static_cast<int>(vtype));
           LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(ftype), static_cast<int>(vtype));
           return RC::SCHEMA_FIELD_TYPE_MISMATCH;
         }
@@ -123,6 +130,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         auto sq_expr    = static_cast<const EnumerableExpr *>(expr.get());
         if (sq_expr->get_value_with_eof(*row_tuple, v) != RC::RECORD_EOF)
         {
+          sql_debug("Expected a scalar expression to update.");
           LOG_WARN("Expected a scalar expression to update.");
           return RC::INVALID_ARGUMENT;
         }
@@ -134,6 +142,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           auto ones = std::vector<char>(f.len(), '\1');
           rc        = table_record.set_field(f.offset(), f.len(), ones.data());
           if (OB_FAIL(rc)) {
+            sql_debug("1failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             trx->rollback();
             return rc;
@@ -143,6 +152,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           auto zeros = std::vector<char>(f.len(), '\0');
           rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
           if (OB_FAIL(rc)) {
+            sql_debug("2failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             trx->rollback();
             return rc;
@@ -152,6 +162,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         default: {
           rc = table_record.set_field(f.offset() + f.nullable(), v.length() - f.nullable(), v.data());
           if (OB_FAIL(rc)) {
+            sql_debug("3failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             trx->rollback();
             return rc;
@@ -163,6 +174,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     // 2. remove old record...
     rc = trx->delete_record(table_, record);
     if (OB_FAIL(rc)) {
+            sql_debug("4failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
       LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
       trx->rollback();
       rollback(trx, deleted_records, inserted_records);
@@ -175,6 +187,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     // 3. insert new record...
     rc = trx->insert_record(table_, table_record);
     if (OB_FAIL(rc)) {
+            sql_debug("5failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
       LOG_WARN("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
       trx->rollback();
       rollback(trx, deleted_records, inserted_records);
