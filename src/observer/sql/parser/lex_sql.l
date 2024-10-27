@@ -123,6 +123,7 @@ LIKE                                    RETURN_TOKEN(LIKE);
 GROUP                                   RETURN_TOKEN(GROUP);
 ORDER                                   RETURN_TOKEN(ORDER);
 BY                                      RETURN_TOKEN(BY);
+HAVING                                  RETURN_TOKEN(HAVING);
 ASC                                     RETURN_TOKEN(ASC);
 STORAGE                                 RETURN_TOKEN(STORAGE);
 FORMAT                                  RETURN_TOKEN(FORMAT);

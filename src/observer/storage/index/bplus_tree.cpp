@@ -875,11 +875,12 @@ RC BplusTreeHandler::create(LogHandler &log_handler, DiskBufferPool &buffer_pool
   file_header->root_page         = BP_INVALID_PAGE_NUM;
 
   file_header->attr_num = fields.size();
-  for (int i = 0; i < fields.size(); i++) {
+  for (size_t i = 0; i < fields.size(); i++) {
     file_header->field_id[i]    = field_ids[i];
     file_header->attr_type[i]   = fields[i]->type();
     file_header->attr_offset[i] = fields[i]->offset();
     file_header->attr_length[i] = fields[i]->len();
+    file_header->nullable[i] = fields[i]->nullable();
   }
 
   // 取消记录日志的原因请参考下面的sync调用的地方。
@@ -904,7 +905,8 @@ RC BplusTreeHandler::create(LogHandler &log_handler, DiskBufferPool &buffer_pool
       file_header->unique,
       file_header->attr_num,
       file_header->field_id,
-      file_header->attr_length);
+      file_header->attr_length,
+      file_header->nullable);
   key_printer_.init(file_header->attr_type, file_header->attr_num, file_header->attr_length);
 
   /*
@@ -980,7 +982,8 @@ RC BplusTreeHandler::open(LogHandler &log_handler, DiskBufferPool &buffer_pool)
       file_header_.unique,
       file_header_.attr_num,
       file_header_.field_id,
-      file_header_.attr_length);
+      file_header_.attr_length,
+      file_header_.nullable);
   key_printer_.init(file_header_.attr_type, file_header_.attr_num, file_header_.attr_length);
   LOG_INFO("Successfully open index");
   return RC::SUCCESS;
@@ -1463,7 +1466,8 @@ RC BplusTreeHandler::recover_init_header_page(BplusTreeMiniTransaction &mtr, Fra
       file_header_.unique,
       file_header_.attr_num,
       file_header_.field_id,
-      file_header_.attr_length);
+      file_header_.attr_length,
+      file_header_.nullable);
   key_printer_.init(file_header_.attr_type, file_header_.attr_num, file_header_.attr_length);
 
   return RC::SUCCESS;

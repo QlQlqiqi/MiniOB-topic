@@ -443,7 +443,7 @@ RC Table::create_index(Trx *trx, const std::vector<const FieldMeta*> &field_meta
   RC rc = new_index_meta.init(index_name, field_metas, unique);
   if (rc != RC::SUCCESS) {
     std::string field_names = field_metas[0]->name();
-    for (int i = 0; i < field_metas.size(); i++) {
+    for (int i = 0; i < static_cast<int>(field_metas.size()); i++) {
       field_names += ", ";
       field_names += field_metas[i]->name();
     }

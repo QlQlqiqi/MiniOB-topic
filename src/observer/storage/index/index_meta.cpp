@@ -46,7 +46,7 @@ void IndexMeta::to_json(Json::Value &json_value) const
   json_value[FIELD_UNIQUE] = unique_;
   json_value[FIELD_FIELD_NUM] = field_.size();
   Json::Value fields;
-  for (int i = 0; i < field_.size(); i++) {
+  for (int i = 0; i < static_cast<int>(field_.size()); i++) {
     fields[i] = field_[i];
   }
   json_value[FIELD_FIELD_NAME] = std::move(fields);
@@ -75,7 +75,7 @@ RC IndexMeta::from_json(const TableMeta &table, const Json::Value &json_value, I
         return RC::INTERNAL;
   }
 
-  if (field_num.asInt() != field_value.size()) {
+  if (field_num.asInt() != static_cast<int>(field_value.size())) {
     LOG_ERROR("Field num of index [%s] is %d, not equal to field size %d",
         name_value.asCString(),
         field_num.asInt(),
@@ -93,7 +93,7 @@ RC IndexMeta::from_json(const TableMeta &table, const Json::Value &json_value, I
   }
 
   std::vector<const FieldMeta*> fields;
-  for (int i = 0; i < field_value.size(); i++) {
+  for (int i = 0; i < static_cast<int>(field_value.size()); i++) {
     const FieldMeta *field = table.field(field_value[i].asCString());
     if (nullptr == field) {
       LOG_ERROR("Deserialize index [%s]: no such field: %s", name_value.asCString(), field_value.asCString());

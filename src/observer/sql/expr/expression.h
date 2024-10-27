@@ -457,7 +457,7 @@ public:
 
   virtual std::unique_ptr<Expression> Clone() const override
   {
-    return std::make_unique<UnboundAggregateExpr>(aggregate_name_.c_str(), child_->Clone().get());
+    return std::make_unique<UnboundAggregateExpr>(aggregate_name_.c_str(), child_->Clone().release());
   }
   ExprType type() const override { return ExprType::UNBOUND_AGGREGATION; }
 

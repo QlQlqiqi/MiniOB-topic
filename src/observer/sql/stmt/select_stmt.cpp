@@ -144,6 +144,15 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     }
   }
 
+  //create filter stmt in having stmt
+  FilterStmt *having_filter_stmt = nullptr;
+  RC          rc          = FilterStmt::create(db, nullptr, &table_map, select_sql.having_conditions.release(), having_filter_stmt);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("cannot construct filter stmt");
+    return rc;
+  }
+
+
   unique_ptr<OrderByStmt> order_by_stmt = make_unique<OrderByStmt>();
   for (size_t i = 0; i < select_sql.order_by.size(); i++) {
     RC rc = expression_binder.bind_expression(select_sql.order_by[i]->unbound_field, order_by_stmt->order_by_expressions);
@@ -163,7 +172,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
 
   // create filter statement in `where` statement
   FilterStmt *filter_stmt = nullptr;
-  RC          rc          = FilterStmt::create(db, default_table, &table_map, select_sql.conditions.release(), filter_stmt);
+  rc          = FilterStmt::create(db, default_table, &table_map, select_sql.conditions.release(), filter_stmt);
   if (rc != RC::SUCCESS) {
     LOG_WARN("cannot construct filter stmt");
     return rc;
@@ -177,6 +186,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   select_stmt->query_expressions_.swap(bound_expressions);
   select_stmt->filter_stmt_ = filter_stmt;
   select_stmt->group_by_.swap(group_by_expressions);
+  select_stmt->having_filter_stmt_ = having_filter_stmt;
   select_stmt->order_by_.swap(order_by_stmt);
   select_stmt->join_conditions_.swap(join_conditions);
   stmt                      = select_stmt;
