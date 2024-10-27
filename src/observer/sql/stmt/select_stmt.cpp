@@ -92,7 +92,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   if(select_sql.inner_join != nullptr){
     auto &inner_join_relations = select_sql.inner_join->relations;
     auto &inner_join_conditions = select_sql.inner_join->conditions; 
-    assert(inner_join_conditions.size() == inner_join_relations.size());
+    ASSERT(inner_join_conditions.size() * 2 == inner_join_relations.size(), "inner join conditions and relations size not match");
 
     //i加2：因为inner_join_relations中存了relrelation_name, relation_alias。
     //relations[i] 为 relation_name; relations[i+1] 为 relation_alias 没有为""

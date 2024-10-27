@@ -680,7 +680,7 @@ select_stmt:        /*  select 语句的语法解析树*/
       }
 
       if ($4 != nullptr) {
-        if($5 != nullptr && $4->size() != 1){
+        if($5 != nullptr && $4->size() != 2){
           yyerror(&@$,sql_string,sql_result,scanner,"inner join only support one table",true);
           delete $4;
           YYERROR;
@@ -755,24 +755,13 @@ expression_list:
     ;
 
 aggr_argument_list:
-  /* empty */
-  {
-    $$ = nullptr;
-  }
-  | expression alias
+  expression alias
   {
     if($2 != nullptr){
       $1->set_alias($2);
       free($2);
     }
     $$ = $1;
-  }
-  | expression alias COMMA expression_list
-  {
-    $$ = nullptr;
-    delete $1;
-    free($2);
-    delete $4;
   }
   ;
 
@@ -812,9 +801,6 @@ expression:
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
-    | aggregate_expr {
-      $$ = $1;
-    }
     | L2_DISTANCE LBRACE expression COMMA expression RBRACE {
       $$ = create_function_expression(FunctionExpr::Type::L2_DISTANCE, sql_string, $3, $5, &@$);
     }
@@ -823,6 +809,9 @@ expression:
     }
     | INNER_PRODUCT LBRACE expression COMMA expression RBRACE {
       $$ = create_function_expression(FunctionExpr::Type::INNER_PRODUCT, sql_string, $3, $5, &@$);
+    }
+    | aggregate_expr {
+      $$ = $1;
     }
     | sub_query_expr {
       $$ = $1;

@@ -62,6 +62,7 @@ RC SqlTaskHandler::handle_sql(SQLStageEvent *sql_event)
     LOG_TRACE("failed to do query cache. rc=%s", strrc(rc));
     return rc;
   }
+  
   LOG_INFO("pass cache stage");
 
   rc = parse_stage_.handle_request(sql_event);
