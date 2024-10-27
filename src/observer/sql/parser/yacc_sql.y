@@ -117,6 +117,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         STRING_T
         FLOAT_T
         VECTOR_T
+        TEXT_T
         IS
         NOT
         NULL_T
@@ -484,6 +485,7 @@ type:
     | STRING_T { $$ = static_cast<int>(AttrType::CHARS); }
     | FLOAT_T  { $$ = static_cast<int>(AttrType::FLOATS); }
     | VECTOR_T { $$ = static_cast<int>(AttrType::VECTORS); }
+    | TEXT_T   { $$ = static_cast<int>(AttrType::TEXTS); }
     | DATE_T   { $$ = static_cast<int>(AttrType::DATES); }
     ;
 insert_stmt:        /*insert   语句的语法解析树*/

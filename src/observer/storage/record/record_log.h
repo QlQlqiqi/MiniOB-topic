@@ -64,12 +64,9 @@ struct RecordLogHeader
   int32_t operation_type;
   PageNum page_num;
   int32_t storage_format;
-  int32_t column_num;
-  union
-  {
-    SlotNum slot_num;
-    int32_t record_size;
-  };
+  SlotNum slot_num;
+  // 当操作为 insert 的时候，这代表插入的 record length；
+  int record_size = -1;
 
   char data[0];
 
@@ -84,7 +81,8 @@ public:
   RecordLogHandler()  = default;
   ~RecordLogHandler() = default;
 
-  RC init(LogHandler &log_handler, int32_t buffer_pool_id, int32_t record_size, StorageFormat storage_format);
+  RC init(LogHandler &log_handler, int32_t buffer_pool_id, int32_t record_size, StorageFormat storage_format) {return RC::UNSUPPORTED;}
+  RC init(LogHandler &log_handler, int32_t buffer_pool_id, StorageFormat storage_format);
 
   /**
    * @brief 初始化一个新的页面
@@ -99,7 +97,8 @@ public:
    * @param page_num 页面编号
    * @param data 页面数据目前主要是 `column index`
    */
-  RC init_new_page(Frame *frame, PageNum page_num, span<const char> data);
+  RC init_new_page(Frame *frame, PageNum page_num, span<const char> data) { return RC::UNIMPLEMENTED; }
+  RC init_new_page(Frame *frame, PageNum page_num);
 
   /**
    * @brief 插入一条记录
@@ -107,7 +106,8 @@ public:
    * @param rid 记录的位置
    * @param record 记录的内容
    */
-  RC insert_record(Frame *frame, const RID &rid, const char *record);
+  RC insert_record(Frame *frame, const RID &rid, const char *record) { return RC::UNIMPLEMENTED; }
+  RC insert_record(Frame *frame, const RID &rid, const char *record, const int record_size);
 
   /**
    * @brief 删除一条记录
@@ -128,7 +128,7 @@ public:
 private:
   LogHandler   *log_handler_    = nullptr;
   int32_t       buffer_pool_id_ = -1;
-  int32_t       record_size_    = -1;
+  // int32_t       record_size_    = -1;
   StorageFormat storage_format_ = StorageFormat::ROW_FORMAT;
 };
 

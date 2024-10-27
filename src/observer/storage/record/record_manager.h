@@ -62,16 +62,38 @@ class Table;
  * @details 每一页都有一个这样的页头，虽然看起来浪费，但是现在就简单的这么做
  * 从这个页头描述的信息来看，当前仅支持定长行/记录。如果要支持变长记录，
  * 或者超长（超出一页）的记录，这么做是不合适的。
+ * 
+ * 目前是变长 record 存储：先存 bool 代表这个 record 是否存在，再存 int 类型（4B）的
+ * record 长度，后面跟着具体内容，如果 space 剩余空间不足，那么新建一个 page，并让这个
+ * page 指向其；内容后跟着 rid，代表这个 record 的后面部分内容存储位置；
+ * {BP_INVALID_PAGE_NUM, -1} 则代表这个 record 在当前 page 中已经完全存储了；
+ *
+ * TODO(qiqi)：当前设计可能会产生死锁或者并发问题，因为大 record 的多次 insert、
+ * delete 被拆成多个小的操作
  */
 struct PageHeader
 {
+  // 这个数量并不准确，如果大 record 横跨多个 page，那么
+  // 每个 page 中都会对其进行记录；
   int32_t record_num;        ///< 当前页面记录的个数
+  // TODO(qiqi)：这个目前只被 pax 使用，但是目前不支持
   int32_t column_num;        ///< 当前页面记录所包含的列数
-  int32_t record_real_size;  ///< 每条记录的实际大小
-  int32_t record_size;       ///< 每条记录占用实际空间大小(可能对齐)
-  int32_t record_capacity;   ///< 最大记录个数
-  int32_t col_idx_offset;    ///< 列索引偏移量
-  int32_t data_offset;       ///< 第一条记录的偏移量
+  SlotNum next_slot;         ///< insert 时候的 slot，初始值为 PAGE_HEADER_SIZE
+
+  // int32_t record_real_size;  ///< 每条记录的实际大小
+  // int32_t record_size;       ///< 每条记录占用实际空间大小(可能对齐)
+  // int32_t record_capacity;   ///< 最大记录个数
+  // int32_t col_idx_offset;    ///< 列索引偏移量
+  // 现在 record 是变长，如果这个 page 开始一些位置存储的是某 record 的后半部分，
+  // 那么这个属性会指向这部分之后的内容
+  // int32_t data_offset;       ///< 第一条记录的偏移量
+  // 如果个 page 放不下这个 record，那么该 record 的剩余部分将存储在
+  // next_page 中，否则为 -1。
+  // int32_t next_page = -1;    ///< 该 page 中唯一 record 的剩余部分存储的 page id
+  // 长度固定为 BITMAP_SIZE
+  // char bitmap[0];               ///< 代表这个 page 中对应的 record 是否有效
+  // TODO(qiqi): 这里需要根据 slot num 遍历整个 page 来查找对应的 record，
+  // 所以存在性能问题，且现有的策略并不会真正删除 record，所以无法释放“空洞”
 
   string to_string() const;
 };
@@ -114,7 +136,7 @@ public:
 private:
   RecordPageHandler *record_page_handler_ = nullptr;
   PageNum            page_num_            = BP_INVALID_PAGE_NUM;
-  common::Bitmap     bitmap_;             ///< bitmap 的相关信息可以参考 RecordPageHandler 的说明
+  // common::Bitmap     bitmap_;             ///< bitmap 的相关信息可以参考 RecordPageHandler 的说明
   SlotNum            next_slot_num_ = 0;  ///< 当前遍历到了哪一个slot
 };
 
@@ -155,7 +177,12 @@ public:
    * @param table_meta  表的元数据
    */
   RC init_empty_page(
-      DiskBufferPool &buffer_pool, LogHandler &log_handler, PageNum page_num, int record_size, TableMeta *table_meta);
+      DiskBufferPool &buffer_pool, LogHandler &log_handler, PageNum page_num, int record_size, TableMeta *table_meta)
+  {
+    return RC::UNIMPLEMENTED;
+  }
+
+  RC init_empty_page(DiskBufferPool &buffer_pool, LogHandler &log_handler, PageNum page_num, TableMeta *table_meta);
 
   /**
    * @brief 对一个新的页面做初始化，初始化关于该页面记录信息的页头PageHeader，该函数用于日志回放时。
@@ -166,7 +193,12 @@ public:
    * @param col_idx_data 列索引数据
    */
   RC init_empty_page(DiskBufferPool &buffer_pool, LogHandler &log_handler, PageNum page_num, int record_size,
-      int col_num, const char *col_idx_data);
+      int col_num, const char *col_idx_data)
+  {
+    return RC::UNIMPLEMENTED;
+  }
+
+  RC init_empty_page(DiskBufferPool &buffer_pool, LogHandler &log_handler, PageNum page_num, int col_num = 0);
 
   /**
    * @brief 操作结束后做的清理工作，比如释放页面、解锁
@@ -180,6 +212,7 @@ public:
    * @param rid  如果插入成功，通过这个参数返回插入的位置
    */
   virtual RC insert_record(const char *data, RID *rid) { return RC::UNIMPLEMENTED; }
+  virtual RC insert_record(const char *data, const int record_size, RID *rid) { return RC::UNIMPLEMENTED; }
 
   /**
    * @brief 数据库恢复时，在指定位置插入数据
@@ -188,6 +221,7 @@ public:
    * @param rid  插入的位置
    */
   virtual RC recover_insert_record(const char *data, const RID &rid) { return RC::UNIMPLEMENTED; }
+  virtual RC recover_insert_record(const char *data, const int record_size, const RID &rid) { return RC::UNIMPLEMENTED; }
 
   /**
    * @brief 删除指定的记录
@@ -207,6 +241,7 @@ public:
    *
    * @param rid 指定的位置
    * @param record 获取到的记录结果
+   * @param next_id 获取到的记录结果
    */
   virtual RC get_record(const RID &rid, Record &record) { return RC::UNIMPLEMENTED; }
 
@@ -228,6 +263,16 @@ public:
    */
   bool is_full() const;
 
+  /**
+   * @brief 返回当前页面剩下的空间中最多能插入的 record 大小
+   */
+  int32_t get_remain_record_space() const;
+
+  // 设置 now rid 位置的 record 对应的 next rid 为 next_rid
+  virtual void set_next_rid(const RID *now_rid, const RID *next_rid) { ASSERT(false, "unimplement"); }
+
+  virtual std::vector<char *> get_all_info(const SlotNum &slot_num) { ASSERT(false, "unimplement"); }
+
 protected:
   /**
    * @details
@@ -237,11 +282,12 @@ protected:
    */
   void fix_record_capacity()
   {
-    int32_t last_record_offset = page_header_->data_offset + page_header_->record_capacity * page_header_->record_size;
-    while (last_record_offset > BP_PAGE_DATA_SIZE) {
-      page_header_->record_capacity -= 1;
-      last_record_offset -= page_header_->record_size;
-    }
+    // int32_t last_record_offset = page_header_->data_offset + page_header_->record_capacity * page_header_->record_size;
+    // while (last_record_offset > BP_PAGE_DATA_SIZE) {
+    //   page_header_->record_capacity -= 1;
+    //   last_record_offset -= page_header_->record_size;
+    // }
+    ASSERT(false, "unimplement fix_record_capacity");
   }
 
   /**
@@ -249,10 +295,7 @@ protected:
    *
    * @param 指定的记录槽位
    */
-  char *get_record_data(SlotNum slot_num)
-  {
-    return frame_->data() + page_header_->data_offset + (page_header_->record_size * slot_num);
-  }
+  char *get_record_data(SlotNum slot_num);
 
 protected:
   DiskBufferPool  *disk_buffer_pool_ = nullptr;  ///< 当前操作的buffer pool(文件)
@@ -260,7 +303,8 @@ protected:
   Frame *frame_ = nullptr;  ///< 当前操作页面关联的frame(frame的更多概念可以参考buffer pool和frame)
   ReadWriteMode rw_mode_     = ReadWriteMode::READ_WRITE;  ///< 当前的操作是否都是只读的
   PageHeader   *page_header_ = nullptr;                    ///< 当前页面上页面头
-  char         *bitmap_      = nullptr;  ///< 当前页面上record分配状态信息bitmap内存起始位置
+  // 移到 page header 中
+  // char         *bitmap_      = nullptr;  ///< 当前页面上record分配状态信息bitmap内存起始位置
   StorageFormat storage_format_;
 
 protected:
@@ -282,9 +326,11 @@ class RowRecordPageHandler : public RecordPageHandler
 public:
   RowRecordPageHandler() : RecordPageHandler(StorageFormat::ROW_FORMAT) {}
 
-  virtual RC insert_record(const char *data, RID *rid) override;
+  virtual RC insert_record(const char *data, RID *rid) override { return RC::UNIMPLEMENTED; }
+  virtual RC insert_record(const char *data, const int record_size, RID *rid) override;
 
-  virtual RC recover_insert_record(const char *data, const RID &rid) override;
+  virtual RC recover_insert_record(const char *data, const RID &rid) override { return RC::UNIMPLEMENTED; }
+  virtual RC recover_insert_record(const char *data, const int record_size, const RID &rid) override;
 
   virtual RC delete_record(const RID *rid) override;
 
@@ -297,6 +343,12 @@ public:
    * @param record 返回指定的数据。这里不会将数据复制出来，而是使用指针，所以调用者必须保证数据使用期间受到保护
    */
   virtual RC get_record(const RID &rid, Record &record) override;
+
+  void set_next_rid(const RID *now_rid, const RID *next_rid) override;
+
+  // 根据 slot_num 获取对应存储的数据的 4 部分，具体见 PageHeader 描述；
+  std::vector<char *> get_all_info(const SlotNum &slot_num) override;
+protected:
 };
 
 /**
@@ -323,6 +375,7 @@ public:
    * 注意：需要将record 按列拆分，在 Page 内按 PAX 格式存储。
    */
   virtual RC insert_record(const char *data, RID *rid) override;
+  virtual RC insert_record(const char *data, const int record_size, RID *rid) override { return RC::UNIMPLEMENTED; }
 
   virtual RC delete_record(const RID *rid) override;
 
@@ -341,6 +394,7 @@ public:
    * @param chunk 由 chunk.column(i).col_id() 指定列。
    */
   virtual RC get_chunk(Chunk &chunk) override;
+  virtual std::vector<char *> get_all_info(const SlotNum &slot_num) override { ASSERT(false, "unimplement"); }
 
 private:
   // get the field data by `slot_num` and `column id`

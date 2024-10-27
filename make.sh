@@ -5,4 +5,4 @@ if [ "$1" = "all" ]; then
 fi
 
 
-./build.sh debug --make -j24
+./build.sh debug -DCONCURRENCY=ON --make -j24
