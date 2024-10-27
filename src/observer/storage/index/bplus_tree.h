@@ -58,12 +58,13 @@ enum class BplusTreeOperationType
 class AttrComparator
 {
 public:
-  void init(AttrType *type,int attr_num, int *field_id,  int *length)
+  void init(AttrType *type,int attr_num, int *field_id,  int *length, bool *nullable)
   {
     for (int i = 0; i < attr_num; i++) {
       field_id_.emplace_back(field_id[i]);
       attr_type_.emplace_back(type[i]);
       attr_length_.emplace_back(length[i]);
+      nullable_.emplace_back(nullable[i]);
     }
   }
 
@@ -76,6 +77,7 @@ public:
     return sum_len;
   }
 
+// null 比较被视为大于
 int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> field_meta = nullptr) const
   {
     int cmp_res = 0;
@@ -99,9 +101,21 @@ int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> 
       // }
       auto attr_type   = attr_type_[i];
       auto attr_length = attr_length_[i];
+      auto nullable = nullable_[i];
       if (field_meta != nullptr) {
         attr_type   = field_meta->type();
         attr_length = field_meta->len();
+        nullable = field_meta->nullable();
+      }
+      // 如果是 null，那么视为大于
+      if (nullable) {
+        // 先比较第 1B 是否为 null
+        if (v1[offset] && v2[offset]) {
+          offset += attr_length;
+          cmp_res = 1;
+          break;
+        }
+        offset++;
       }
       switch (attr_type) {
         case AttrType::DATES:  {
@@ -149,6 +163,7 @@ private:
   std::vector<int> field_id_;
   std::vector<int> attr_length_;
   std::vector<AttrType> attr_type_;
+  std::vector<bool> nullable_;
 };
 
 /**
@@ -159,10 +174,10 @@ private:
 class KeyComparator
 {
 public:
-  void init(AttrType *type,bool unique, int attr_num, int *field_id,  int *length)
+  void init(AttrType *type,bool unique, int attr_num, int *field_id,  int *length, bool *nullable)
   {
     unique_ = unique;
-    attr_comparator_.init(type,attr_num, field_id,  length);
+    attr_comparator_.init(type,attr_num, field_id,  length, nullable);
   }
 
   const AttrComparator &attr_comparator() const { return attr_comparator_; }
@@ -318,6 +333,7 @@ struct IndexFileHeader
   int32_t attr_length[MAX_INDEX_FIELD_NUM];       ///< 键值的长度
   int32_t attr_offset[MAX_INDEX_FIELD_NUM];       ///< 键值在record中的offset
   AttrType attr_type[MAX_INDEX_FIELD_NUM];        ///< 键值的类型
+  bool nullable[MAX_INDEX_FIELD_NUM];             ///< nullable
   bool unique;                 ///< unique
 
   const string to_string() const
@@ -327,6 +343,7 @@ struct IndexFileHeader
     ss << "attr_length:" << attr_length << ","
        << "key_length:" << key_length << ","
        << "attr_type:" << attr_type << ","
+       << "nullable:" << nullable << ","
        << "root_page:" << root_page << ","
        << "internal_max_size:" << internal_max_size << ","
        << "unique:" << unique << ","
