@@ -110,7 +110,6 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         }
       }
 
-<<<<<<< HEAD
       auto match = [](FieldMeta &f, Value &v) {
         if (auto ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
           if (f.nullable() && v.attr_type() == AttrType::NULLS) {
@@ -121,23 +120,12 @@ RC UpdatePhysicalOperator::open(Trx *trx)
             return RC::SCHEMA_FIELD_TYPE_MISMATCH;
           }
           v = t;
-=======
-      if (auto ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
-        if (!(vtype == AttrType::NULLS && f.nullable()))
-        {
-          LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(ftype), static_cast<int>(vtype));
-          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
->>>>>>> parent of b6efb80... TBR, fix(update):add sql_debug log
         }
         return RC::SUCCESS;
       };
       
       rc = match(f, v);
       if (OB_FAIL(rc)) {
-        sql_debug("schema mismatch. field(%s) type: %d, value type: %d",
-            f.name(),
-            static_cast<int>(f.type()),
-            static_cast<int>(v.attr_type()));
         LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(f.type()), static_cast<int>(v.attr_type()));
         return rc;
       }
