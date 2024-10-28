@@ -753,13 +753,24 @@ expression_list:
     ;
 
 aggr_argument_list:
-  expression alias
+  /* empty */
+  {
+    $$ = nullptr;
+  }
+  | expression alias
   {
     if($2 != nullptr){
       $1->set_alias($2);
       free($2);
     }
     $$ = $1;
+  }
+  | expression alias COMMA expression_list
+  {
+    $$ = nullptr;
+    delete $1;
+    free($2);
+    delete $4;
   }
   ;
 
