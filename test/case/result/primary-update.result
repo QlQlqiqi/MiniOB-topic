@@ -20,7 +20,7 @@ SELECT * FROM Update_table_1;
 ID | T_NAME | COL1 | COL2
 
 2. UPDATE ROWS
-UPDATE Update_table_1 SET col2=0 WHERE col1=1;
+UPDATE Update_table_1 SET col2='0' WHERE col1=1;
 SUCCESS
 SELECT * FROM Update_table_1;
 1 | N01 | 1 | 0

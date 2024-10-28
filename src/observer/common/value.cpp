@@ -440,7 +440,7 @@ RC Value::get_int(int &val) const {
       return RC::SUCCESS;
     }
     case AttrType::FLOATS: {
-      val = (int)(value_.float_value_);
+      val = (int)(value_.float_value_ + 0.5);
       return RC::SUCCESS;
     }
     case AttrType::BOOLEANS: {
