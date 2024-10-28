@@ -18,8 +18,10 @@ See the Mulan PSL v2 for more details. */
 #include "storage/trx/trx.h"
 #include <algorithm>
 
+using namespace std;
+
 UpdatePhysicalOperator::UpdatePhysicalOperator(
-    Table *table, std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>>&& values)
+    Table *table, std::vector<std::pair<FieldMeta, Value>> values)
     : table_(table), values_(std::move(values))
 {}
 
@@ -61,7 +63,6 @@ RC UpdatePhysicalOperator::open(Trx *trx)
 
   trx_ = trx;
 
-  RowTuple *row_tuple = nullptr;
   while (OB_SUCC(rc = child->next())) {
     Tuple *tuple = child->current_tuple();
     if (nullptr == tuple) {
@@ -69,7 +70,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
       return rc;
     }
 
-    row_tuple = static_cast<RowTuple *>(tuple);
+    RowTuple *row_tuple = static_cast<RowTuple *>(tuple);
     Record   &record    = row_tuple->record();
     records_.emplace_back(std::move(record));
   }
@@ -96,67 +97,15 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     }
 
     // 1. prepare a record...
-    for (auto &[f, expr] : values_) {
-      Value v;
-      if (nullptr == row_tuple) {
-        return RC::INTERNAL;
-      }
-      RC rc = expr->get_value(*row_tuple, v);
-      if (OB_FAIL(rc)) {
-        if (rc == RC::RECORD_EOF) {
-          v.set_null();
-        } else {
-          return rc;
-        }
-      }
-
-<<<<<<< HEAD
-      auto match = [](FieldMeta &f, Value &v) {
-        if (auto ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
-          if (f.nullable() && v.attr_type() == AttrType::NULLS) {
-            return RC::SUCCESS;
-          }
-          Value t;
-          if (OB_FAIL(Value::strictly_cast_to(v, ftype, t))) {
-            return RC::SCHEMA_FIELD_TYPE_MISMATCH;
-          }
-          v = t;
-=======
-      if (auto ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
-        if (!(vtype == AttrType::NULLS && f.nullable()))
-        {
-          LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(ftype), static_cast<int>(vtype));
-          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
->>>>>>> parent of b6efb80... TBR, fix(update):add sql_debug log
-        }
-        return RC::SUCCESS;
-      };
-      
-      rc = match(f, v);
-      if (OB_FAIL(rc)) {
-        sql_debug("schema mismatch. field(%s) type: %d, value type: %d",
-            f.name(),
-            static_cast<int>(f.type()),
-            static_cast<int>(v.attr_type()));
-        LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(f.type()), static_cast<int>(v.attr_type()));
-        return rc;
-      }
-
-      if (expr->type() == ExprType::SUBQUERY || expr->type() == ExprType::EXPRLIST)
-      {
-        auto sq_expr    = static_cast<const EnumerableExpr *>(expr.get());
-        if (sq_expr->get_value_with_eof(*row_tuple, v) != RC::RECORD_EOF)
-        {
-          LOG_WARN("Expected a scalar expression to update.");
-          return RC::INVALID_ARGUMENT;
-        }
-      }
+    for (auto &item : values_) {
+      auto &f = item.first;
+      auto &v = item.second;
 
       switch (v.attr_type()) {
         case AttrType::NULLS: {
           assert(f.nullable());
-          auto ones = std::vector<char>(f.len(), '\1');
-          rc        = table_record.set_field(f.offset(), f.len(), ones.data());
+          auto zeros = std::vector<char>(f.len(), '\1');
+          rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             trx->rollback();

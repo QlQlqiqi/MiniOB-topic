@@ -652,19 +652,21 @@ update_stmt:      /*  update 语句的语法解析树*/
     }
     ;
 update_kv_list:
-    ID EQ expression
+    ID EQ value
     {
       $$ = new KeyValueList{};
       $$->attrs.emplace_back($1);
-      $$->values.emplace_back($3);
+      $$->values.emplace_back(*$3);
       free($1);
+      delete $3;
     }
-    | update_kv_list COMMA ID EQ expression
+    | update_kv_list COMMA ID EQ value
     {
       $$ = $1;
       $$->attrs.emplace_back($3);
-      $$->values.emplace_back($5);
+      $$->values.emplace_back(*$5);
       free($3);
+      delete $5;
     }
     ;
 

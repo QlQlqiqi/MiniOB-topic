@@ -193,7 +193,7 @@ struct UpdateSqlNode
   std::string                   relation_name;   ///< Relation to update
   std::string                   relation_alias;  ///< Relation alias
   std::vector<std::string>      attribute_name;  ///< 要修改的属性
-  std::vector<Expression*>      value;           ///< 要更新的值
+  std::vector<Value>            value;           ///< 要更新的值
   Expression                   *conditions;      ///< 查询条件
   // std::vector<ConditionSqlNode> conditions;
 };
@@ -205,7 +205,7 @@ struct UpdateSqlNode
 struct KeyValueList
 {
   std::vector<std::string> attrs; ///< 要修改的属性
-  std::vector<Expression*> values;      ///< 要更新的值
+  std::vector<Value> values;      ///< 要更新的值
 };
 
 /**
