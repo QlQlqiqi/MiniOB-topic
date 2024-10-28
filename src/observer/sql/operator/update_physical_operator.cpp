@@ -119,20 +119,22 @@ RC UpdatePhysicalOperator::open(Trx *trx)
             return RC::SUCCESS;
           }
           Value t;
-          if (OB_FAIL(Value::cast_to(v, ftype, t))) {
+          if (OB_FAIL(Value::strictly_cast_to(v, ftype, t))) {
             return RC::SCHEMA_FIELD_TYPE_MISMATCH;
           }
           v = t;
         }
         return RC::SUCCESS;
       };
-
-      if (OB_FAIL(match(f, v))) {
-          sql_debug("schema mismatch. field(%s) type: %d, value type: %d",
+      
+      rc = match(f, v);
+      if (OB_FAIL(rc)) {
+        sql_debug("schema mismatch. field(%s) type: %d, value type: %d",
             f.name(),
             static_cast<int>(f.type()),
             static_cast<int>(v.attr_type()));
         LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(f.type()), static_cast<int>(v.attr_type()));
+        return rc;
       }
 
       if (expr->type() == ExprType::SUBQUERY || expr->type() == ExprType::EXPRLIST)
