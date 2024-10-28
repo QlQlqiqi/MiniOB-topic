@@ -111,11 +111,9 @@ int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> 
       if (nullable) {
         // 先比较第 1B 是否为 null
         if (v1[offset] && v2[offset]) {
-          offset += attr_length;
           cmp_res = 1;
           break;
         }
-        offset++;
       }
       switch (attr_type) {
         case AttrType::DATES:  {
