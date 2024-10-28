@@ -30,7 +30,7 @@ class UpdateStmt : public Stmt
 {
 public:
   UpdateStmt() = default;
-  UpdateStmt(Table *table, std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>> values, FilterStmt *stmt);
+  UpdateStmt(Table *table, std::vector<std::pair<FieldMeta, Value>> values, FilterStmt *stmt);
 
   ~UpdateStmt() override;
 
@@ -40,11 +40,11 @@ public:
 
 public:
   Table                                          *table() const { return table_; }
-  const std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>> &values() const { return values_; }
+  const std::vector<std::pair<FieldMeta, Value>> &values() const { return values_; }
   FilterStmt                                     *filter_stmt() const { return filter_stmt_; }
 
 private:
   Table                                   *table_        = nullptr;
   FilterStmt                              *filter_stmt_  = nullptr;
-  std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>> values_;
+  std::vector<std::pair<FieldMeta, Value>> values_;
 };

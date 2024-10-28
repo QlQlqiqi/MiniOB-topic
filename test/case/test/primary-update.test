@@ -10,7 +10,7 @@ UPDATE Update_table_1 SET t_name='N01' WHERE id=1;
 -- sort SELECT * FROM Update_table_1;
 
 -- echo 2. update rows
-UPDATE Update_table_1 SET col2='0' WHERE col1=1;
+UPDATE Update_table_1 SET col2=0 WHERE col1=1;
 -- sort SELECT * FROM Update_table_1;
 
 -- echo 3. update a index column

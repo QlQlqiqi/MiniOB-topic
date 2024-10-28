@@ -64,11 +64,6 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
 
       if (auto left  = comp_expr->left().get();  left->type() == ExprType::SUBQUERY)  { rc = f(static_cast<SubQueryExpr *>(left)); }
       if (auto right = comp_expr->right().get(); right->type() == ExprType::SUBQUERY) { rc = f(static_cast<SubQueryExpr *>(right)); }
-    
-      if (OB_FAIL(rc)) {
-        LOG_WARN("create sub query stmt failed, rc=%s", strrc(rc));
-        return rc;
-      }
     }
 
     RC   rc = expression_binder.bind_expression(l, filter_expressions);
