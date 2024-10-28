@@ -115,7 +115,6 @@ public:
     bool             b;
     common::DateTime d;
     string           s;
-    Value            v;
     RC               rc;
 
     switch(to_type)
@@ -123,40 +122,40 @@ public:
       case AttrType::INTS:
       {
         rc = value.get_int(i);
+        result.set_int(i);
       } break;
       case AttrType::CHARS:
       {
         rc = value.get_string(s);
+        result.set_string(s.c_str(), s.size());
       } break;
       case AttrType::FLOATS:
       {
         rc = value.get_float(f);
+        result.set_float(f);
       } break;
       case AttrType::BOOLEANS:
       {
         rc = value.get_boolean(b);
+        result.set_boolean(b);
       } break;
       case AttrType::DATES:
       {
         rc = value.get_date(d);
+        result.set_date(d);
       } break;
       case AttrType::VECTORS:
       {
         if (value.attr_type() != AttrType::CHARS) {
           rc = RC::INVALID_ARGUMENT;
         } else {
-          rc = static_cast<CharType *>(DataType::type_instance(AttrType::CHARS))->char2vector(value, v);
+          rc = static_cast<CharType *>(DataType::type_instance(AttrType::CHARS))->char2vector(value, result);
         }
       } break;
       default: rc = RC::INVALID_ARGUMENT;
     }
-
-    if (OB_FAIL(rc))
-    {
-      return rc;
-    }
-
-    return Value::cast_to(value, to_type, result);
+    
+    return rc;
   }
 
   void set_type(AttrType type) { this->attr_type_ = type; }
