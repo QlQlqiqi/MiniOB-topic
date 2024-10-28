@@ -26,25 +26,29 @@ public:
 
   void add_table(Table *table) { 
     if(table!= nullptr){
-        query_table_maps_[table->name()] = table;
-        query_tables_.insert(table);
+        if(table_set_.count(table) == 0){
+            query_table_maps_[table->name()] = table;
+            table_set_.insert(table);
+            query_tables_.push_back(table);
+        }
     }
   }
 
   //调用改函数之前必须保证已经调用了 add_table
   void add_alias(const std::string& table_name, Table* table){
     //query_table_map 映射存在，表示有相同别名或者表名已经存在映射
-    if(query_table_maps_.count(table_name) == 0 && query_tables_.count(table) != 0){
+    if(query_table_maps_.count(table_name) == 0 && table_set_.count(table) != 0){
         query_table_maps_.insert({table_name, table});
     }
   }
 
   Table *find_table(const char *table_name) const;
 
-  const std::set<Table *> &query_tables() const { return query_tables_; }
+  const std::vector<Table *> &query_tables() const { return query_tables_; }
 
 private:
-  std::set<Table *> query_tables_;
+  std::vector<Table *> query_tables_;
+  std::set<Table *> table_set_;
   //记录表名/别名 到 Table* 的映射
   std::unordered_map<std::string, Table*> query_table_maps_;
 };
