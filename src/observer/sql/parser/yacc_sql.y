@@ -13,6 +13,7 @@
 #include "sql/parser/lex_sql.h"
 #include "sql/expr/expression.h"
 #include "common/time/datetime.h"
+#include "common/type/vector_type.h"
 
 using namespace std;
 
@@ -447,9 +448,18 @@ attr_def:
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = $6 == true;
+      $$->high_vector = false;
+      $$->dim = 0;
       // 如果是 vector，那么这里的 length 代表的是数量
       if($2 == static_cast<int>(AttrType::VECTORS)) {
-        $$->length += $4 * sizeof(double);
+        $$->dim = $4;
+        // 如果其设置的 dim 过大，设置 vector 存储规则与 text 相同
+        if($4 > VECTOR_HIGH_DIM) {
+          $$->length += sizeof(uint64_t) + sizeof(int32_t);
+          $$->high_vector = true;
+        } else {
+          $$->length += $4 * sizeof(double);
+        }
       } else {
         $$->length += $4;
       }
@@ -463,6 +473,8 @@ attr_def:
       $$->name = $1;
       // 这块是 4 是因为 char 和 vector 需要用 ()
       $$->length = 4 + ($3 == true);
+      $$->high_vector = false;
+      $$->dim = 0;
       // 如果是 date，应该为 sizeof(common::DateTime)
       if($$->type == AttrType::DATES) {
         $$->length = sizeof(common::DateTime) + ($3 == true);

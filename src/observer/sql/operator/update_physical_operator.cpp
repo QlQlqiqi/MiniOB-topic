@@ -161,12 +161,13 @@ RC UpdatePhysicalOperator::open(Trx *trx)
             return rc;
           }
         } break;
-        case AttrType::CHARS: {
-          // text 不应处理，因为 text 的 value 长度是变长的
-          if (f.type() == AttrType::TEXTS) {
-            // 检查 text 是否超过限制
-            if (v.length() > TEXT_MAX_SIZE) {
-              LOG_WARN("text length is too large: %d", v.length());
+        case AttrType::VECTORS: {
+          // high vector 与 text 处理方式类似
+          if (f.high_vector()) {
+            // 检查 high vector dim
+            if (f.dim() * sizeof(double) != v.length()) {
+              LOG_WARN("high field's length %d should be the same as value's %d", f.dim() * sizeof(double), v.length());
+              trx->rollback();
               return RC::INVALID_ARGUMENT;
             }
             // 先置 is_null 标志位为 0
@@ -176,6 +177,35 @@ RC UpdatePhysicalOperator::open(Trx *trx)
                 v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
             if (OB_FAIL(rc)) {
               LOG_WARN("failed to write text into text_buffer_pool_");
+              trx->rollback();
+              return rc;
+            }
+          } else {
+            rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
+            if (OB_FAIL(rc)) {
+              LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+              trx->rollback();
+              return rc;
+            }
+          }
+        } break;
+        case AttrType::CHARS: {
+          // text 不应处理，因为 text 的 value 长度是变长的
+          if (f.type() == AttrType::TEXTS) {
+            // 检查 text 是否超过限制
+            if (v.length() > TEXT_MAX_SIZE) {
+              LOG_WARN("text length is too large: %d", v.length());
+              trx->rollback();
+              return RC::INVALID_ARGUMENT;
+            }
+            // 先置 is_null 标志位为 0
+            table_record.set_field(f.offset(), 1, "\0");
+            // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
+            RC rc = table_->set_text_and_store_record(
+                v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
+            if (OB_FAIL(rc)) {
+              LOG_WARN("failed to write text into text_buffer_pool_");
+              trx->rollback();
               return rc;
             }
             break;
