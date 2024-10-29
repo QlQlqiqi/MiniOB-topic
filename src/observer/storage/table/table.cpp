@@ -421,7 +421,7 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
         return rc;
       }
     } else {
-      memcpy(record_data, value.data(), copy_len - field->nullable());
+      memcpy(record_data, value.data(), value.length());
     }
   }
   return RC::SUCCESS;
@@ -478,7 +478,12 @@ RC Table::get_text_from_record(const char* record, Value &result) const
     return rc;
   }
   result.set_type(AttrType::CHARS);
-  result.set_data(text, len);
+  // 如果是 0，可以特判
+  if (len == 0) {
+    result.set_data("", len);
+  } else {
+    result.set_data(text, len);
+  }
   delete[] text;
 
   return RC::SUCCESS;

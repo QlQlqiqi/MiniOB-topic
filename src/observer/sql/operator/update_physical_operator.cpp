@@ -161,17 +161,6 @@ RC UpdatePhysicalOperator::open(Trx *trx)
             return rc;
           }
         } break;
-        // text 不应处理，因为 text 的 value 长度是变长的
-        case AttrType::TEXTS: {
-          ASSERT(v.attr_type() == AttrType::CHARS, "value type must be chars");
-          // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
-          RC rc =
-              table_->set_text_and_store_record(v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
-          if (OB_FAIL(rc)) {
-            LOG_WARN("failed to write text into text_buffer_pool_");
-            return rc;
-          }
-        } break;
         case AttrType::CHARS: {
           // text 不应处理，因为 text 的 value 长度是变长的
           if (f.type() == AttrType::TEXTS) {
@@ -180,6 +169,8 @@ RC UpdatePhysicalOperator::open(Trx *trx)
               LOG_WARN("text length is too large: %d", v.length());
               return RC::INVALID_ARGUMENT;
             }
+            // 先置 is_null 标志位为 0
+            table_record.set_field(f.offset(), 1, "\0");
             // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
             RC rc = table_->set_text_and_store_record(
                 v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
@@ -199,7 +190,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           [[fallthrough]];
         }
         default: {
-          rc = table_record.set_field(f.offset() + f.nullable(), v.length() - f.nullable(), v.data());
+          rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             trx->rollback();
