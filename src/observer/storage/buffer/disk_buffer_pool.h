@@ -268,6 +268,15 @@ public:
   RC redo_allocate_page(LSN lsn, PageNum page_num);
   RC redo_deallocate_page(LSN lsn, PageNum page_num);
 
+  /**
+   * 将 data 对应的内容 append 到文件中，并将这个偏移返回到 off 中；
+   * TODO(qiqi): 一个 page 插入一个数据后，这个 page 将不会被使用
+  */
+  RC append(const char *data, const int len, uint64_t &off);
+
+  // 获取 off 位置的数据
+  RC get_data(char *data, const int len, const uint64_t off);
+
 public:
   int32_t id() const { return buffer_pool_id_; }
 

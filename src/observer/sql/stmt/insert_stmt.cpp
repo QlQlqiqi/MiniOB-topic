@@ -47,6 +47,16 @@ RC InsertStmt::create(Db *db, const InsertSqlNode &inserts, Stmt *&stmt)
     return RC::SCHEMA_FIELD_MISSING;
   }
 
+  // 检查 text 是否超过限制
+  for (auto &field : *table_meta.field_metas()) {
+    if (field.type() == AttrType::TEXTS) {
+      if (value_num > TEXT_MAX_SIZE) {
+        LOG_WARN("text length is too large: %d", value_num);
+        return RC::INVALID_ARGUMENT;
+      }
+    }
+  }
+
   // everything alright
   stmt = new InsertStmt(table, values, value_num);
   return RC::SUCCESS;

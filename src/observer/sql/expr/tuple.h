@@ -215,9 +215,19 @@ public:
       cell.set_null();
       return RC::SUCCESS;
     }
-    cell.set_type(field_meta->type());
-    cell.set_data(this->record_->data() + field_meta->offset() + field_meta->nullable(),
-        field_meta->len() - field_meta->nullable());
+    // 对于 text，需要先从 record 中读取 text 对应的 off，然后从 text buffer pool
+    // 读取对应的数据
+    if (field_meta->type() == AttrType::TEXTS) {
+      RC rc = table_->get_text_from_record(record_->data() + field_meta->offset() + field_meta->nullable(), cell);
+      if (RC::SUCCESS != rc) {
+        LOG_WARN("Failed to read text rc=%s", strrc(rc));
+        return rc;
+      }
+    } else {
+      cell.set_type(field_meta->type());
+      cell.set_data(this->record_->data() + field_meta->offset() + field_meta->nullable(),
+          field_meta->len() - field_meta->nullable());
+    }
     return RC::SUCCESS;
   }
 

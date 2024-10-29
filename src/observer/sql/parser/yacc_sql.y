@@ -118,6 +118,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         STRING_T
         FLOAT_T
         VECTOR_T
+        TEXT_T
         IS
         NOT
         NULL_T
@@ -466,6 +467,11 @@ attr_def:
       if($$->type == AttrType::DATES) {
         $$->length = sizeof(common::DateTime) + ($3 == true);
       }
+      // 如果是 text，应该为 sizeof(uint64_t) + sizeof(int32_t)
+      // 代表 text file 中 offset 和 text length
+      else if($$->type == AttrType::TEXTS) {
+        $$->length = sizeof(uint64_t) + sizeof(int32_t) + ($3 == true);
+      }
       $$->nullable = $3;
       free($1);
     }
@@ -508,6 +514,7 @@ type:
     | STRING_T { $$ = static_cast<int>(AttrType::CHARS); }
     | FLOAT_T  { $$ = static_cast<int>(AttrType::FLOATS); }
     | VECTOR_T { $$ = static_cast<int>(AttrType::VECTORS); }
+    | TEXT_T   { $$ = static_cast<int>(AttrType::TEXTS); }
     | DATE_T   { $$ = static_cast<int>(AttrType::DATES); }
     ;
 insert_stmt:        /*insert   语句的语法解析树*/

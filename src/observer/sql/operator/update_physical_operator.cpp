@@ -123,7 +123,17 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         }
         return RC::SUCCESS;
       };
-      
+
+      // 读取 text 内容
+      // if (f.type() == AttrType::TEXTS && !v.is_null()) {
+      //   ASSERT(v.attr_type() == AttrType::CHARS, "value must be chars");
+      //   RC rc = table_->get_text_from_record(record.data() + f.offset() + f.nullable(), v);
+      //   if (RC::SUCCESS != rc) {
+      //     LOG_WARN("Failed to read text rc=%s", strrc(rc));
+      //     return rc;
+      //   }
+      // }
+
       rc = match(f, v);
       if (OB_FAIL(rc)) {
         LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(f.type()), static_cast<int>(v.attr_type()));
@@ -151,7 +161,29 @@ RC UpdatePhysicalOperator::open(Trx *trx)
             return rc;
           }
         } break;
+        // text 不应处理，因为 text 的 value 长度是变长的
+        case AttrType::TEXTS: {
+          ASSERT(v.attr_type() == AttrType::CHARS, "value type must be chars");
+          // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
+          RC rc =
+              table_->set_text_and_store_record(v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
+          if (OB_FAIL(rc)) {
+            LOG_WARN("failed to write text into text_buffer_pool_");
+            return rc;
+          }
+        } break;
         case AttrType::CHARS: {
+          // text 不应处理，因为 text 的 value 长度是变长的
+          if (f.type() == AttrType::TEXTS) {
+            // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
+            RC rc = table_->set_text_and_store_record(
+                v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
+            if (OB_FAIL(rc)) {
+              LOG_WARN("failed to write text into text_buffer_pool_");
+              return rc;
+            }
+            break;
+          }
           auto zeros = std::vector<char>(f.len(), '\0');
           rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
           if (OB_FAIL(rc)) {

@@ -681,6 +681,36 @@ RC DiskBufferPool::redo_deallocate_page(LSN lsn, PageNum page_num)
   return RC::SUCCESS;
 }
 
+RC DiskBufferPool::append(const char *data, const int len, uint64_t &off)
+{
+  off = file_header_->page_count * BP_PAGE_SIZE;
+  // 定位到 off 位置
+  if (lseek(file_desc_, off, SEEK_SET) == -1) {
+    LOG_ERROR("Failed to lseek %s at offset %d :%s.", file_name_.c_str(), off, strerror(errno));
+    return RC::IOERR_SEEK;
+  }
+  if (0 != writen(file_desc_, data, len)) {
+    LOG_ERROR("Failed to write text into file due to %s.", off, file_desc_, strerror(errno));
+    return RC::IOERR_WRITE;
+  }
+  file_header_->page_count += (len + BP_PAGE_SIZE - 1) / BP_PAGE_SIZE;
+
+  return RC::SUCCESS;
+}
+
+RC DiskBufferPool::get_data(char *data, const int len, const uint64_t off)
+{
+  if (lseek(file_desc_, off, SEEK_SET) == -1) {
+    LOG_ERROR("Failed to lseek %s at offset %d :%s.", file_name_.c_str(), off, strerror(errno));
+    return RC::IOERR_SEEK;
+  }
+  if (readn(file_desc_, data, len) != 0) {
+    LOG_ERROR("Failed to load text");
+    return RC::IOERR_READ;
+  }
+  return RC::SUCCESS;
+}
+
 RC DiskBufferPool::allocate_frame(PageNum page_num, Frame **buffer)
 {
   auto purger = [this](Frame *frame) {

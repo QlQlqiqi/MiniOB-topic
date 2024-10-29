@@ -124,6 +124,7 @@ public:
         rc = value.get_int(i);
         result.set_int(i);
       } break;
+      case AttrType::TEXTS:
       case AttrType::CHARS:
       {
         rc = value.get_string(s);

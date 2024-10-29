@@ -13,8 +13,11 @@ See the Mulan PSL v2 for more details. */
 #include "common/rc.h"
 #include "common/type/data_type.h"
 
+const int TEXT_MAX_SIZE = 65535;
+
 /**
- * @brief 固定长度的字符串类型
+ * @brief 固定长度的字符串类型或者 text
+ *        
  * @ingroup DataType
  */
 class CharType : public DataType
