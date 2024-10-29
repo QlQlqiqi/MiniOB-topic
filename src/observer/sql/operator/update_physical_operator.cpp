@@ -175,6 +175,11 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         case AttrType::CHARS: {
           // text 不应处理，因为 text 的 value 长度是变长的
           if (f.type() == AttrType::TEXTS) {
+            // 检查 text 是否超过限制
+            if (v.length() > TEXT_MAX_SIZE) {
+              LOG_WARN("text length is too large: %d", v.length());
+              return RC::INVALID_ARGUMENT;
+            }
             // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
             RC rc = table_->set_text_and_store_record(
                 v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
