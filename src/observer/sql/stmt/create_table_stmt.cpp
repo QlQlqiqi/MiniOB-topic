@@ -32,8 +32,8 @@ RC CreateTableStmt::create(Db *db, const CreateTableSqlNode &create_table, Stmt 
   // vector 的维度不得过高
   for (auto &attr : create_table.attr_infos) {
     if (attr.type == AttrType::VECTORS) {
-      if (attr.length > VECTOR_MAX_SIZE) {
-        LOG_WARN("dont support too high dim for vector: %d", attr.length);
+      if (attr.dim > VECTOR_MAX_SIZE) {
+        LOG_WARN("dont support too high dim for vector: %d", attr.dim);
         return RC::INVALID_ARGUMENT;
       }
     }
