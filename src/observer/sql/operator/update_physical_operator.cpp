@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/table/table.h"
 #include "storage/trx/trx.h"
 #include <algorithm>
+#include "event/sql_debug.h"
 
 UpdatePhysicalOperator::UpdatePhysicalOperator(
     Table *table, std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>>&& values)
@@ -126,6 +127,10 @@ RC UpdatePhysicalOperator::open(Trx *trx)
       
       rc = match(f, v);
       if (OB_FAIL(rc)) {
+        sql_debug("schema mismatch. field(%s) type: %d, value type: %d",
+          f.name(),
+          static_cast<int>(f.type()),
+          static_cast<int>(v.attr_type()));
         LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(f.type()), static_cast<int>(v.attr_type()));
         return rc;
       }
@@ -175,6 +180,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     // 2. remove old record...
     rc = trx->delete_record(table_, record);
     if (OB_FAIL(rc)) {
+      sql_debug("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
       LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
       trx->rollback();
       rollback(trx, deleted_records, inserted_records);
@@ -187,6 +193,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     // 3. insert new record...
     rc = trx->insert_record(table_, table_record);
     if (OB_FAIL(rc)) {
+      sql_debug("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
       LOG_WARN("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
       trx->rollback();
       rollback(trx, deleted_records, inserted_records);
