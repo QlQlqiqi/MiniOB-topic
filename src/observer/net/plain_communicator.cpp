@@ -130,8 +130,25 @@ RC PlainCommunicator::write_debug(SessionEvent *request, bool &need_disconnect)
   SqlDebug &sql_debug = request->sql_debug();
 
   const list<string> &debug_infos = sql_debug.get_debug_infos();
+  size_t              cnt         = 0;
+
   for (auto &debug_info : debug_infos) {
-    RC rc = writer_->writen(debug_message_prefix_.data(), debug_message_prefix_.size());
+    cnt += debug_info.length() + 3;
+
+    char newline = '#';
+    if (cnt >= 260) {   // 线上环境每行最多260字符
+      newline = '\n';
+      cnt = debug_info.length() + 2;
+    }
+
+    RC rc = writer_->writen(&newline, 1);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to send new line to client. err=%s", strerror(errno));
+      need_disconnect = true;
+      return RC::IOERR_WRITE;
+    }
+
+    rc = writer_->writen(debug_message_prefix_.data(), debug_message_prefix_.size());
     if (OB_FAIL(rc)) {
       LOG_WARN("failed to send data to client. err=%s", strerror(errno));
       need_disconnect = true;
@@ -141,15 +158,6 @@ RC PlainCommunicator::write_debug(SessionEvent *request, bool &need_disconnect)
     rc = writer_->writen(debug_info.data(), debug_info.size());
     if (OB_FAIL(rc)) {
       LOG_WARN("failed to send data to client. err=%s", strerror(errno));
-      need_disconnect = true;
-      return RC::IOERR_WRITE;
-    }
-
-    char newline = '\n';
-
-    rc = writer_->writen(&newline, 1);
-    if (OB_FAIL(rc)) {
-      LOG_WARN("failed to send new line to client. err=%s", strerror(errno));
       need_disconnect = true;
       return RC::IOERR_WRITE;
     }
