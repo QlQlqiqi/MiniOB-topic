@@ -111,15 +111,26 @@ int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> 
       // 如果是 null，那么视为大于
       if (nullable) {
         // 先比较第 1B 是否为 null
-        if (v1[offset] && v2[offset]) {
-          // 如果 ignore null，则返回成功
-          if (ignore) {
+        // 对于 delete 来说，v2 为 null 的时候，目标如果也是 null，算匹配
+        if (ignore) {
+          if (v2[offset] && v1[offset]) {
             cmp_res = 0;
             break;
           }
-          cmp_res = 1;
-          break;
+        } else {
+          // 如果是 insert 或者 select
+          // 如果 v2 是 null
+          if (v2[offset]) {
+            cmp_res = 1;
+            break;
+          } else if (v1[offset]) {
+            cmp_res = -1;
+            break;
+          }
         }
+        // 后面不比较 isnull
+        offset++;
+        attr_length--;
       }
       switch (attr_type) {
         case AttrType::DATES:  {
