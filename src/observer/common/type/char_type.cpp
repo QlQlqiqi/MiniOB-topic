@@ -17,9 +17,9 @@ See the Mulan PSL v2 for more details. */
 int CharType::compare(const Value &left, const Value &right) const
 {
   ASSERT(left.attr_type() == AttrType::CHARS && right.attr_type() == AttrType::CHARS, "invalid type");
-  // 因为有 isnulll 标志位，需要用 memcmp
-
-  return memcmp(left.value_.pointer_value_, right.value_.pointer_value_, std::min(left.length_, right.length_));
+  ASSERT(!left.is_null() && !left.is_null(), "value should be not null");
+  return common::compare_string(
+      (void *)left.value_.pointer_value_, left.length_, (void *)right.value_.pointer_value_, right.length_);
 }
 
 RC CharType::set_value_from_str(Value &val, const string &data) const
