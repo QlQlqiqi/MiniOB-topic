@@ -25,8 +25,8 @@ See the Mulan PSL v2 for more details. */
 class IndexScanPhysicalOperator : public PhysicalOperator
 {
 public:
-  IndexScanPhysicalOperator(Table *table, Index *index, ReadWriteMode mode, const Value *left_value,
-      bool left_inclusive, const Value *right_value, bool right_inclusive, const FieldMeta *field_meta);
+  IndexScanPhysicalOperator(Table *table, Index *index, ReadWriteMode mode, const Record *left_record,
+      bool left_inclusive, const Record *right_record, bool right_inclusive, const FieldMeta *field_meta);
 
   virtual ~IndexScanPhysicalOperator() = default;
 
@@ -60,8 +60,11 @@ private:
   // TODO(qiqi): 这时候 left_value 和 right_value 是同一个 value，
   // 且是 index key 的一部分（或全部），field meta 代表 left_value(right_value)
   // 对应的列
-  Value                      left_value_;
-  Value                      right_value_;
+  // 因为要适配 is null，所以用 record 代替 value
+  // Value                      left_value_;
+  // Value                      right_value_;
+  Record                      left_record_;
+  Record                      right_record_;
   std::shared_ptr<FieldMeta> field_meta_;
   bool                       left_inclusive_  = false;
   bool                       right_inclusive_ = false;

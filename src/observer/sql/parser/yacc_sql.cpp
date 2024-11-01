@@ -2159,7 +2159,7 @@ yyreduce:
 #line 496 "yacc_sql.y"
     {
       // 根据 primary-null.result 来看，默认是 not null
-      (yyval.bools) = false;
+      (yyval.bools) = true;
     }
 #line 2165 "yacc_sql.cpp"
     break;

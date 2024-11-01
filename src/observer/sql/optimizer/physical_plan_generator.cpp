@@ -216,14 +216,24 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
     ASSERT(value_expr != nullptr, "got an index but value expr is null ?");
 
     const Value               &value           = value_expr->get_value();
+    const auto &meta = field_expr->field().meta();
+    // 对于 nullable 的 value 来说，需要补充 value 前面的 isnull 标记
+    if(meta->nullable()) {
+      // 这里的 value 应该是没有 isnull 标记的
+      ASSERT(meta->len() == value.length() + 1, "initial nullable value should be without isnull flag");
+    }
+    Record left_record;
+    table->make_record(0, &value, left_record);
+    Record right_record;
+    table->make_record(0, &value, right_record);
     IndexScanPhysicalOperator *index_scan_oper = new IndexScanPhysicalOperator(table,
         index,
         table_get_oper.read_write_mode(),
-        &value,
+        &left_record,
         true /*left_inclusive*/,
-        &value,
+        &right_record,
         true /*right_inclusive*/,
-        field_expr->field().meta());
+        meta);
 
     index_scan_oper->set_predicates(std::move(predicates));
     oper = unique_ptr<PhysicalOperator>(index_scan_oper);
