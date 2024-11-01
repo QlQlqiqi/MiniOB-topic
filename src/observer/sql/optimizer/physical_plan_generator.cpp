@@ -212,13 +212,14 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
     }
   }
 
-  if (index != nullptr) {
+  // TODO(qiqi): 暂时对于 null 来说，这里不应使用
+  if (index != nullptr && !value_expr->get_value().is_null()) {
     ASSERT(value_expr != nullptr, "got an index but value expr is null ?");
 
     const Value               &value           = value_expr->get_value();
     const auto &meta = field_expr->field().meta();
     // 对于 nullable 的 value 来说，需要补充 value 前面的 isnull 标记
-    if(meta->nullable()) {
+    if(meta->nullable() && !value.is_null()) {
       // 这里的 value 应该是没有 isnull 标记的
       ASSERT(meta->len() == value.length() + 1, "initial nullable value should be without isnull flag");
     }
