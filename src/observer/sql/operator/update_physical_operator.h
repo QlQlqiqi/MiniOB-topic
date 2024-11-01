@@ -28,7 +28,7 @@ class UpdeteStmt;
 class UpdatePhysicalOperator : public PhysicalOperator
 {
 public:
-  UpdatePhysicalOperator(Table *table, std::vector<std::pair<FieldMeta, Value>> values);
+  UpdatePhysicalOperator(Table *table, std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>>&& values);
 
   virtual ~UpdatePhysicalOperator() = default;
 
@@ -45,8 +45,8 @@ private:
   // TODO(qiqi): 暂时被用于 rollback
   RC rollback(Trx *trx, std::vector<Record> &deleted_records, std::vector<Record> &inserted_records) const;
 
-  Table                 *table_ = nullptr;
-  Trx                   *trx_   = nullptr;
-  std::vector<Record>    records_;
-  std::vector<std::pair<FieldMeta, Value>> values_;
+  Table                                                         *table_ = nullptr;
+  Trx                                                           *trx_   = nullptr;
+  std::vector<Record>                                            records_;
+  std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>> values_;
 };

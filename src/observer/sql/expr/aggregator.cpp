@@ -21,10 +21,24 @@ RC SumAggregator::accumulate(const Value &value)
     value_ = value;
     return RC::SUCCESS;
   }
-  
-  ASSERT(value.attr_type() == value_.attr_type(), "type mismatch. value type: %s, value_.type: %s", 
-        attr_type_to_string(value.attr_type()), attr_type_to_string(value_.attr_type()));
-  
+
+  if (!value.is_null() && !value_.is_null())
+  {
+    ASSERT(value.attr_type() == value_.attr_type(), "type mismatch. value type: %s, value_.type: %s", 
+          attr_type_to_string(value.attr_type()), attr_type_to_string(value_.attr_type()));
+  }
+
+  if (value.is_null())
+  {
+    return RC::SUCCESS;
+  }
+
+  if (value_.is_null())
+  {
+    value_ = value;
+    return RC::SUCCESS;
+  }
+
   Value::add(value, value_, value_);
   return RC::SUCCESS;
 }

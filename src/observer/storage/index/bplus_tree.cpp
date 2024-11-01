@@ -225,12 +225,13 @@ char *LeafIndexNodeHandler::value_at(int index)
   return __value_at(index);
 }
 
-int LeafIndexNodeHandler::lookup(const KeyComparator &comparator, const char *key, bool *found /* = nullptr */) const
+int LeafIndexNodeHandler::lookup(
+    const KeyComparator &comparator, const char *key, bool *found /* = nullptr */, bool force /* = false */) const
 {
   const int                    size = this->size();
   common::BinaryIterator<char> iter_begin(item_size(), __key_at(0));
   common::BinaryIterator<char> iter_end(item_size(), __key_at(size));
-  common::BinaryIterator<char> iter = lower_bound(iter_begin, iter_end, key, comparator, found);
+  common::BinaryIterator<char> iter = lower_bound(iter_begin, iter_end, key, comparator, found, force);
   return iter - iter_begin;
 }
 
@@ -267,7 +268,7 @@ RC LeafIndexNodeHandler::remove(int index)
 int LeafIndexNodeHandler::remove(const char *key, const KeyComparator &comparator)
 {
   bool found = false;
-  int  index = lookup(comparator, key, &found);
+  int  index = lookup(comparator, key, &found, true);
   if (found) {
     this->remove(index);
     return 1;
@@ -875,11 +876,12 @@ RC BplusTreeHandler::create(LogHandler &log_handler, DiskBufferPool &buffer_pool
   file_header->root_page         = BP_INVALID_PAGE_NUM;
 
   file_header->attr_num = fields.size();
-  for (int i = 0; i < fields.size(); i++) {
+  for (size_t i = 0; i < fields.size(); i++) {
     file_header->field_id[i]    = field_ids[i];
     file_header->attr_type[i]   = fields[i]->type();
     file_header->attr_offset[i] = fields[i]->offset();
     file_header->attr_length[i] = fields[i]->len();
+    file_header->nullable[i] = fields[i]->nullable();
   }
 
   // 取消记录日志的原因请参考下面的sync调用的地方。
@@ -904,7 +906,8 @@ RC BplusTreeHandler::create(LogHandler &log_handler, DiskBufferPool &buffer_pool
       file_header->unique,
       file_header->attr_num,
       file_header->field_id,
-      file_header->attr_length);
+      file_header->attr_length,
+      file_header->nullable);
   key_printer_.init(file_header->attr_type, file_header->attr_num, file_header->attr_length);
 
   /*
@@ -980,7 +983,8 @@ RC BplusTreeHandler::open(LogHandler &log_handler, DiskBufferPool &buffer_pool)
       file_header_.unique,
       file_header_.attr_num,
       file_header_.field_id,
-      file_header_.attr_length);
+      file_header_.attr_length,
+      file_header_.nullable);
   key_printer_.init(file_header_.attr_type, file_header_.attr_num, file_header_.attr_length);
   LOG_INFO("Successfully open index");
   return RC::SUCCESS;
@@ -1463,7 +1467,8 @@ RC BplusTreeHandler::recover_init_header_page(BplusTreeMiniTransaction &mtr, Fra
       file_header_.unique,
       file_header_.attr_num,
       file_header_.field_id,
-      file_header_.attr_length);
+      file_header_.attr_length,
+      file_header_.nullable);
   key_printer_.init(file_header_.attr_type, file_header_.attr_num, file_header_.attr_length);
 
   return RC::SUCCESS;

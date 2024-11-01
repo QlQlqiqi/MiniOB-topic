@@ -45,6 +45,7 @@ public:
 
   void set_expr(std::unique_ptr<Expression> &&expr) { expr_ = std::move(expr); }
   const std::unique_ptr<Expression> &get_expr() const { return expr_; }
+  std::unique_ptr<Expression> &expr() { return expr_; }
 
 public:
   static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,

@@ -125,16 +125,34 @@ private:
 
 private:
   RC init_record_handler(const char *base_dir);
+  RC init_text_bp(const char *base_dir);
 
 public:
   Index *find_index(const char *index_name) const;
   Index *find_index_by_field(const char *field_name) const;
+
+  // 根据 field 和存储 offset 和 length 的 record 获取具体的 text，
+  // 并存入 result；
+  // NOTE: 这里的 record 是不包含 nullable 位置的
+  RC get_text_from_record(const char* record, Value &result) const;
+
+  // ===================
+  // | offset | length |
+  // ===================
+
+  // 将 data 内容存入 text buffer pool 中，并将 offset 和 length 存入 record，
+  // 与 get_text_from_record 对应
+  RC set_text_and_store_record(const char *data, const int len, char *record);
 
 private:
   Db                *db_ = nullptr;
   string             base_dir_;
   TableMeta          table_meta_;
   DiskBufferPool    *data_buffer_pool_ = nullptr;  /// 数据文件关联的buffer pool
+  // 对于 text 的数据，会将 text 内容存入 text_buffer_pool，因为 text 和 char 使用
+  // 同一种数据结构，所以这个文件最大不得超过 (1 << 31)Byte；
+  // text 在这个额外的文件的位置会被保存在 data_buffer_pool_ 的 record 中
+  DiskBufferPool    *text_buffer_pool_ = nullptr;  /// text数据文件关联的buffer pool
   RecordFileHandler *record_handler_   = nullptr;  /// 记录操作
   vector<Index *>    indexes_;
 };

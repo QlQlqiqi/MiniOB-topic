@@ -143,22 +143,32 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
   ValueExpr *value_expr = nullptr;
   // TODO(qiqi): 目前只是简单的 field = value 判断
   FieldExpr *field_expr = nullptr;
+  auto f               = [this](SubQueryExpr *sub_query_expr) {
+      std::unique_ptr<PhysicalOperator> sub_query_phy_oper;
+      if (RC rc = create(*sub_query_expr->logical_oper().get(), sub_query_phy_oper); RC::SUCCESS != rc) {
+        return rc;
+      }
+      sub_query_expr->set_physical_oper(std::move(sub_query_phy_oper));
+      return RC::SUCCESS;
+  };
+  RC rc2 = RC::SUCCESS;
+
   for (auto &expr : predicates) {
+    if (expr->type() == ExprType::SUBQUERY) {
+      auto sub_query_expr = static_cast<SubQueryExpr *>(expr.get());
+      rc2 = f(sub_query_expr);
+      if (OB_FAIL(rc2)) {
+        LOG_WARN("1: create sub query physical operator failed, rc2=%s", strrc(rc2));
+        return rc2;
+      }
+    }
     if (expr->type() == ExprType::COMPARISON) {
       auto comparison_expr = static_cast<ComparisonExpr *>(expr.get());
-      auto f               = [this](SubQueryExpr *sub_query_expr) {
-        std::unique_ptr<PhysicalOperator> sub_query_phy_oper;
-        if (RC rc = create(*sub_query_expr->logical_oper().get(), sub_query_phy_oper); RC::SUCCESS != rc) {
-          return rc;
-        }
-        sub_query_expr->set_physical_oper(std::move(sub_query_phy_oper));
-        return RC::SUCCESS;
-      };
 
-      RC rc2 = RC::SUCCESS;
       if (auto left  = comparison_expr->left().get();  left->type() == ExprType::SUBQUERY)  { rc2 = f(static_cast<SubQueryExpr *>(left)); }
       if (auto right = comparison_expr->right().get(); right->type() == ExprType::SUBQUERY) { rc2 = f(static_cast<SubQueryExpr *>(right)); }
       if (OB_FAIL(rc2)) {
+        LOG_WARN("2: create sub query physical operator failed, rc2=%s", strrc(rc2));
         return rc2;
       }
 
@@ -206,14 +216,26 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
     ASSERT(value_expr != nullptr, "got an index but value expr is null ?");
 
     const Value               &value           = value_expr->get_value();
+    const auto &meta = field_expr->field().meta();
+    // 对于 nullable 的 value 来说，需要补充 value 前面的 isnull 标记
+    if(meta->nullable()) {
+      // 这里的 value 应该是没有 isnull 标记的
+      ASSERT(meta->len() == value.length() + 1, "initial nullable value should be without isnull flag");
+    }
+    Record record;
+    char *record_data = (char *)malloc(meta->len());
+    memset(record_data, 0, meta->len());
+    record_data[0] = value.is_null();
+    memcpy(record_data + 1, value.data(), value.length());
+    record.set_data_owner(record_data, meta->len());
     IndexScanPhysicalOperator *index_scan_oper = new IndexScanPhysicalOperator(table,
         index,
         table_get_oper.read_write_mode(),
-        &value,
+        &record,
         true /*left_inclusive*/,
-        &value,
+        &record,
         true /*right_inclusive*/,
-        field_expr->field().meta());
+        meta);
 
     index_scan_oper->set_predicates(std::move(predicates));
     oper = unique_ptr<PhysicalOperator>(index_scan_oper);
@@ -308,7 +330,25 @@ RC PhysicalPlanGenerator::create_plan(UpdateLogicalOperator &update_oper, unique
     }
   }
 
-  oper.reset(new UpdatePhysicalOperator(table, values));
+  auto process_sub_query = [this](SubQueryExpr *sub_query_expr) {
+      std::unique_ptr<PhysicalOperator> sub_query_phy_oper;
+      if (RC rc = create(*sub_query_expr->logical_oper().get(), sub_query_phy_oper); RC::SUCCESS != rc) {
+        return rc;
+      }
+      sub_query_expr->set_physical_oper(std::move(sub_query_phy_oper));
+      return RC::SUCCESS;
+  };
+
+  for (auto& [_, value] : values) {
+    if (value->type() != ExprType::SUBQUERY) { continue; }
+    rc = process_sub_query(static_cast<SubQueryExpr*>(value.get()));
+    if (RC::SUCCESS != rc) {
+      LOG_WARN("2: create sub query logical operator failed");
+      return rc;
+    }
+  }
+
+  oper.reset(new UpdatePhysicalOperator(table, std::move(values)));
 
   if (child_physical_oper) {
     oper->add_child(std::move(child_physical_oper));

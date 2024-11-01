@@ -326,6 +326,20 @@ ValCmpRes Value::compare(const Value &other) const {
 
   if(this->attr_type_ != other.attr_type_){
     if(this->attr_type_ != AttrType::FLOATS || other.attr_type_ != AttrType::INTS){
+      // 这块应该提前判断是否是 vector 和 chars 之间转化
+      if (attr_type_ == AttrType::VECTORS && other.attr_type() == AttrType::CHARS) {
+        if ((rc = Value::cast_to(*this, other.attr_type_, cast_val)) == RC::SUCCESS) {
+          left_val = &cast_val;
+          goto compare;
+        }
+      }
+      if (attr_type_ == AttrType::CHARS && other.attr_type() == AttrType::VECTORS) {
+        if ((rc = Value::cast_to(other, this->attr_type_, cast_val)) == RC::SUCCESS) {
+          right_val = &cast_val;
+          goto compare;
+        }
+      }
+
       if((rc = Value::cast_to(*this, other.attr_type_, cast_val)) == RC::SUCCESS){
         left_val = &cast_val;
         goto compare;
@@ -440,7 +454,7 @@ RC Value::get_int(int &val) const {
       return RC::SUCCESS;
     }
     case AttrType::FLOATS: {
-      val = (int)(value_.float_value_);
+      val = (int)(value_.float_value_ + 0.5);
       return RC::SUCCESS;
     }
     case AttrType::BOOLEANS: {

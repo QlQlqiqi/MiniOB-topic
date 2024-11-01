@@ -102,9 +102,12 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
   unique_ptr<LogicalOperator> *last_oper = nullptr;
 
   unique_ptr<LogicalOperator> table_oper(nullptr);
+
   last_oper = &table_oper;
 
   const std::vector<Table *> &tables = select_stmt->tables();
+
+  //join operator
   for (Table *table : tables) {
     unique_ptr<LogicalOperator> table_get_oper(new TableGetLogicalOperator(table, ReadWriteMode::READ_ONLY));
     if (table_oper == nullptr) {
@@ -132,8 +135,8 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
     }
   }
 
+  //where operator
   unique_ptr<LogicalOperator> predicate_oper;
-
   rc = create_plan(select_stmt->filter_stmt(), predicate_oper);
   if (OB_FAIL(rc)) {
     LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
@@ -148,6 +151,7 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
     last_oper = &predicate_oper;
   }
 
+  //group by operator
   unique_ptr<LogicalOperator> group_by_oper;
   rc = create_group_by_plan(select_stmt, group_by_oper);
   if (OB_FAIL(rc)) {
@@ -162,6 +166,24 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
 
     last_oper = &group_by_oper;
   }
+
+  //having operator 
+  unique_ptr<LogicalOperator> having_predicate_oper;
+
+  rc = create_plan(select_stmt->having_filter_stmt(), having_predicate_oper);
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to create predicate logical plan. rc=%s", strrc(rc));
+    return rc;
+  }
+
+  if (having_predicate_oper) {
+    if (*last_oper) {
+      having_predicate_oper->add_child(std::move(*last_oper));
+    }
+
+    last_oper = &having_predicate_oper;
+  }
+
 
   unique_ptr<LogicalOperator> order_by_oper;
   rc = create_order_by_plan(select_stmt, order_by_oper);
@@ -201,17 +223,18 @@ RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<Logical
     if (expr->type() == ExprType::COMPARISON)
     {
       auto comp_expr = static_cast<ComparisonExpr *>(pre_oper->expressions()[0].get());
-      auto f         = [this](SubQueryExpr *sub_query_expr) {
+      auto process_sub_query = [this](SubQueryExpr *sub_query_expr) {
         std::unique_ptr<LogicalOperator> sub_query_logi_oper;
         if (RC rc = create_plan(sub_query_expr->select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
+          LOG_WARN("1: create sub query logical operator failed");
           return rc;
         }
         sub_query_expr->set_logical_oper(std::move(sub_query_logi_oper));
         return RC::SUCCESS;
       };
 
-      if (auto left  = comp_expr->left().get();  left->type() == ExprType::SUBQUERY)  { rc = f(static_cast<SubQueryExpr *>(left)); }
-      if (auto right = comp_expr->right().get(); right->type() == ExprType::SUBQUERY) { rc = f(static_cast<SubQueryExpr *>(right)); }
+      if (auto left  = comp_expr->left().get();  left->type() == ExprType::SUBQUERY)  { rc = process_sub_query(static_cast<SubQueryExpr *>(left)); }
+      if (auto right = comp_expr->right().get(); right->type() == ExprType::SUBQUERY) { rc = process_sub_query(static_cast<SubQueryExpr *>(right)); }
     }
   }
   logical_operator = std::move(pre_oper);
@@ -238,8 +261,8 @@ RC LogicalPlanGenerator::create_plan(InsertStmt *insert_stmt, unique_ptr<Logical
 
 RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<LogicalOperator> &logical_operator)
 {
-  Table                                   *table = update_stmt->table();
-  std::vector<std::pair<FieldMeta, Value>> values(update_stmt->values());
+  Table *table  = update_stmt->table();
+  auto  &values = const_cast<std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>>&>(update_stmt->values());
 
   FilterStmt                 *filter_stmt = update_stmt->filter_stmt();
   unique_ptr<LogicalOperator> table_get_oper(new TableGetLogicalOperator(table, ReadWriteMode::READ_WRITE));
@@ -247,6 +270,26 @@ RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<Logical
   unique_ptr<LogicalOperator> predicate_oper;
 
   RC rc = create_plan(filter_stmt, predicate_oper);
+
+  auto process_sub_query = [this](SubQueryExpr *sub_query_expr) {
+    std::unique_ptr<LogicalOperator> sub_query_logi_oper;
+    if (RC rc = create_plan(sub_query_expr->select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
+      return rc;
+    }
+    sub_query_expr->set_logical_oper(std::move(sub_query_logi_oper));
+    return RC::SUCCESS;
+  };
+
+  for (auto& [_, value] : update_stmt->values()) {
+    if (value->type() != ExprType::SUBQUERY) { continue; }
+    rc = process_sub_query(static_cast<SubQueryExpr*>(value.get()));
+    if (RC::SUCCESS != rc) {
+      LOG_WARN("2: create sub query logical operator failed");
+      return rc;
+    }
+  }
+
+
   if (rc != RC::SUCCESS) {
     return rc;
   }
@@ -312,6 +355,8 @@ RC LogicalPlanGenerator::create_group_by_plan(SelectStmt *select_stmt, unique_pt
   vector<unique_ptr<Expression>>             &group_by_expressions = select_stmt->group_by();
   vector<Expression *>                        aggregate_expressions;
   vector<unique_ptr<Expression>>             &query_expressions = select_stmt->query_expressions();
+  auto                                       &having_filter_expression = select_stmt->having_filter_stmt()->expr();
+
   function<RC(std::unique_ptr<Expression> &)> collector         = [&](unique_ptr<Expression> &expr) -> RC {
     RC rc = RC::SUCCESS;
     if (expr->type() == ExprType::AGGREGATION) {
@@ -364,6 +409,11 @@ RC LogicalPlanGenerator::create_group_by_plan(SelectStmt *select_stmt, unique_pt
   // collect all aggregate expressions
   for (unique_ptr<Expression> &expression : query_expressions) {
     collector(expression);
+  }
+
+  //collect having aggregate expressions
+  if(having_filter_expression != nullptr){
+    collector(having_filter_expression);
   }
 
   if (group_by_expressions.empty() && aggregate_expressions.empty()) {

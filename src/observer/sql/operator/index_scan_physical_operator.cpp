@@ -17,15 +17,15 @@ See the Mulan PSL v2 for more details. */
 #include "storage/trx/trx.h"
 
 IndexScanPhysicalOperator::IndexScanPhysicalOperator(Table *table, Index *index, ReadWriteMode mode,
-    const Value *left_value, bool left_inclusive, const Value *right_value, bool right_inclusive,
+    const Record *left_record, bool left_inclusive, const Record *right_record, bool right_inclusive,
     const FieldMeta *field_meta)
     : table_(table), index_(index), mode_(mode), left_inclusive_(left_inclusive), right_inclusive_(right_inclusive)
 {
-  if (left_value) {
-    left_value_ = *left_value;
+  if (left_record) {
+    left_record_ = *left_record;
   }
-  if (right_value) {
-    right_value_ = *right_value;
+  if (right_record) {
+    right_record_ = *right_record;
   }
   // 如果没有 field meta 也可以
   if (field_meta == nullptr) {
@@ -41,11 +41,11 @@ RC IndexScanPhysicalOperator::open(Trx *trx)
     return RC::INTERNAL;
   }
 
-  IndexScanner *index_scanner = index_->create_scanner(left_value_.data(),
-      left_value_.length(),
+  IndexScanner *index_scanner = index_->create_scanner(left_record_.data(),
+      left_record_.len(),
       left_inclusive_,
-      right_value_.data(),
-      right_value_.length(),
+      right_record_.data(),
+      right_record_.len(),
       right_inclusive_,
       field_meta_);
   if (nullptr == index_scanner) {

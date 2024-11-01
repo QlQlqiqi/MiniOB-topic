@@ -36,6 +36,7 @@ struct RelAttrSqlNode
 {
   std::string relation_name;   ///< relation name (may be NULL) 表名
   std::string attribute_name;  ///< attribute name              属性名
+  std::string attribute_alias;  ///< attribute alias            属性别名           
 };
 
 /**
@@ -111,6 +112,7 @@ struct OrderBySqlNode
 struct InnerJoinUnit
 {
   std::string                   relation;  ///< relation to join
+  std::string                   relation_alias; ///< relation alias
   std::unique_ptr<Expression>   condition; ///< join conditions
 };
 
@@ -145,6 +147,7 @@ struct SelectSqlNode
   // std::vector<ConditionSqlNode>            conditions;   ///< 查询条件，使用AND串联起来多个条件
   std::unique_ptr<Expression>              conditions;  ///< 查询条件
   std::vector<std::unique_ptr<Expression>> group_by;     ///< group by clause
+  std::unique_ptr<Expression>              having_conditions; ///< having expresssions
   std::vector<std::unique_ptr<OrderBySqlNode>> order_by; ///< order by clause
   std::unique_ptr<InnerJoinSqlNode>        inner_join;   ///< inner join clause
 };
@@ -176,6 +179,7 @@ struct InsertSqlNode
 struct DeleteSqlNode
 {
   std::string                   relation_name;  ///< Relation to delete from
+  std::string                   relation_alias;  ///< Relation alias
   Expression                   *conditions;     ///< 查询条件
   // std::vector<ConditionSqlNode> conditions;
 };
@@ -187,8 +191,9 @@ struct DeleteSqlNode
 struct UpdateSqlNode
 {
   std::string                   relation_name;   ///< Relation to update
+  std::string                   relation_alias;  ///< Relation alias
   std::vector<std::string>      attribute_name;  ///< 要修改的属性
-  std::vector<Value>            value;           ///< 要更新的值
+  std::vector<Expression*>      value;           ///< 要更新的值
   Expression                   *conditions;      ///< 查询条件
   // std::vector<ConditionSqlNode> conditions;
 };
@@ -200,7 +205,7 @@ struct UpdateSqlNode
 struct KeyValueList
 {
   std::vector<std::string> attrs; ///< 要修改的属性
-  std::vector<Value> values;      ///< 要更新的值
+  std::vector<Expression*> values;      ///< 要更新的值
 };
 
 /**

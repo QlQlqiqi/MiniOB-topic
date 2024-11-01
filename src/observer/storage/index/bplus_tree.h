@@ -58,12 +58,13 @@ enum class BplusTreeOperationType
 class AttrComparator
 {
 public:
-  void init(AttrType *type,int attr_num, int *field_id,  int *length)
+  void init(AttrType *type,int attr_num, int *field_id,  int *length, bool *nullable)
   {
     for (int i = 0; i < attr_num; i++) {
       field_id_.emplace_back(field_id[i]);
       attr_type_.emplace_back(type[i]);
       attr_length_.emplace_back(length[i]);
+      nullable_.emplace_back(nullable[i]);
     }
   }
 
@@ -76,7 +77,9 @@ public:
     return sum_len;
   }
 
-int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> field_meta = nullptr) const
+// null 比较被视为大于
+// ignore 为 true 时，忽略 null 的唯一性，也就是说，用 null 查找 null，也会成功
+int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> field_meta = nullptr, bool ignore = false) const
   {
     int cmp_res = 0;
     // TODO(qiqi): 下面的注释是 2023 的，目前不用
@@ -99,9 +102,24 @@ int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> 
       // }
       auto attr_type   = attr_type_[i];
       auto attr_length = attr_length_[i];
+      auto nullable = nullable_[i];
       if (field_meta != nullptr) {
         attr_type   = field_meta->type();
         attr_length = field_meta->len();
+        nullable = field_meta->nullable();
+      }
+      // 如果是 null，那么视为大于
+      if (nullable) {
+        // 先比较第 1B 是否为 null
+        if (v1[offset] && v2[offset]) {
+          // 如果 ignore null，则返回成功
+          if (ignore) {
+            cmp_res = 0;
+            break;
+          }
+          cmp_res = 1;
+          break;
+        }
       }
       switch (attr_type) {
         case AttrType::DATES:  {
@@ -149,6 +167,7 @@ private:
   std::vector<int> field_id_;
   std::vector<int> attr_length_;
   std::vector<AttrType> attr_type_;
+  std::vector<bool> nullable_;
 };
 
 /**
@@ -159,17 +178,18 @@ private:
 class KeyComparator
 {
 public:
-  void init(AttrType *type,bool unique, int attr_num, int *field_id,  int *length)
+  void init(AttrType *type,bool unique, int attr_num, int *field_id,  int *length, bool *nullable)
   {
     unique_ = unique;
-    attr_comparator_.init(type,attr_num, field_id,  length);
+    attr_comparator_.init(type,attr_num, field_id,  length, nullable);
   }
 
   const AttrComparator &attr_comparator() const { return attr_comparator_; }
 
-  int operator()(const char *v1, const char *v2) const
+  // ignore 为 true 时，忽略 null 的唯一性，也就是说，用 null 查找 null，也会成功
+  int operator()(const char *v1, const char *v2, bool ignore = false) const
   {
-    int result = attr_comparator_(v1, v2);
+    int result = attr_comparator_(v1, v2, nullptr, ignore);
     if (result != 0) {
       return result;
     }
@@ -318,6 +338,7 @@ struct IndexFileHeader
   int32_t attr_length[MAX_INDEX_FIELD_NUM];       ///< 键值的长度
   int32_t attr_offset[MAX_INDEX_FIELD_NUM];       ///< 键值在record中的offset
   AttrType attr_type[MAX_INDEX_FIELD_NUM];        ///< 键值的类型
+  bool nullable[MAX_INDEX_FIELD_NUM];             ///< nullable
   bool unique;                 ///< unique
 
   const string to_string() const
@@ -327,6 +348,7 @@ struct IndexFileHeader
     ss << "attr_length:" << attr_length << ","
        << "key_length:" << key_length << ","
        << "attr_type:" << attr_type << ","
+       << "nullable:" << nullable << ","
        << "root_page:" << root_page << ","
        << "internal_max_size:" << internal_max_size << ","
        << "unique:" << unique << ","
@@ -490,7 +512,8 @@ public:
    * 查找指定key的插入位置(注意不是key本身)
    * 如果key已经存在，会设置found的值。
    */
-  int lookup(const KeyComparator &comparator, const char *key, bool *found = nullptr) const;
+  // ignore 为 true 时，忽略 null 的唯一性，也就是说，用 null 查找 null，也会成功
+  int lookup(const KeyComparator &comparator, const char *key, bool *found = nullptr, bool ignore = false) const;
 
   RC  insert(int index, const char *key, const char *value);
   RC  remove(int index);
