@@ -147,7 +147,8 @@ int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> 
           break;
         }
         case AttrType::CHARS: {
-          if (0 == (cmp_res = common::compare_string((void *)(v1 + offset), attr_length, (void *)(v2 + offset), attr_length))) {
+          // 因为有 isnulll 标志位，需要用 memcmp
+          if (0 == (cmp_res = memcmp(v1 + offset, v2 + offset, attr_length))) {
             offset += attr_length;
           } else {
             return cmp_res;
