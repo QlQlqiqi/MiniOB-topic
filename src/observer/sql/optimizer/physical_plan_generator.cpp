@@ -223,9 +223,9 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
       ASSERT(meta->len() == value.length() + 1, "initial nullable value should be without isnull flag");
     }
     Record left_record;
-    table->make_record(0, &value, left_record);
+    table->make_record(1, &value, left_record);
     Record right_record;
-    table->make_record(0, &value, right_record);
+    table->make_record(1, &value, right_record);
     IndexScanPhysicalOperator *index_scan_oper = new IndexScanPhysicalOperator(table,
         index,
         table_get_oper.read_write_mode(),
