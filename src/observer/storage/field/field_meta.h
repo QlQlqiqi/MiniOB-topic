@@ -46,6 +46,8 @@ public:
   int         field_id() const;
   bool        nullable() const;
 
+  void set_name(const string& new_name);
+
 public:
   void desc(ostream &os) const;
 

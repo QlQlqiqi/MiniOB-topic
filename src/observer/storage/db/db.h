@@ -30,7 +30,7 @@ class View;
 class LogHandler;
 class BufferPoolManager;
 class TrxKit;
-class SelectStmt;
+class CreateViewStmt;
 
 /**
  * @brief 一个DB实例负责管理一批表
@@ -91,14 +91,9 @@ public:
 
   /**
    * @brief 创建一个 View
-   * @param table_name view 名
-   * @param attributes view 的属性
-   * @param select_stmt view 对应的查询语句
-   * @param select_sql view 对应的查询SQL
-   * @param storage_format view 的存储格式
+   * @param crete_view_stmt view 的创建语句
    */
-  RC create_view(const char *view_name, const std::vector<std::string> &attr_ids,
-      std::unique_ptr<SelectStmt> &&select_stmt, const std::string &select_sql);
+  RC create_view(CreateViewStmt *create_view_stmt);
 
   /**
    * @brief 删除一个 View
@@ -140,8 +135,8 @@ private:
 private:
   string                         name_;                 ///< 数据库名称
   string                         path_;                 ///< 数据库文件存放的目录
-  unordered_map<string, Table *> opened_tables_;        ///< 当前所有打开的表
-  unordered_map<string, View *>  opened_views_;         ///< 当前所有打开的视图
+  unordered_map<string, Table *> opened_tables_;        ///< 当前所有打开的表和视图
+  // unordered_map<string, View *>  opened_views_;         ///< 当前所有打开的视图
   unique_ptr<BufferPoolManager>  buffer_pool_manager_;  ///< 当前数据库的buffer pool管理器
   unique_ptr<LogHandler>         log_handler_;          ///< 当前数据库的日志处理器
   unique_ptr<TrxKit>             trx_kit_;              ///< 当前数据库的事务管理器

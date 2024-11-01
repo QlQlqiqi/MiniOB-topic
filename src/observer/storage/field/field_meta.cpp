@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/parser/parse_defs.h"
 
 #include "json/json.h"
+#include "field_meta.h"
 
 const static Json::StaticString FIELD_NAME("name");
 const static Json::StaticString FIELD_TYPE("type");
@@ -82,6 +83,7 @@ bool FieldMeta::nullable() const {
   return attr_nullable_;
 }
 
+void FieldMeta::set_name(const std::string& name) {this->name_ = name;}
 void FieldMeta::desc(std::ostream &os) const
 {
   os << "field name=" << name_ << ", type=" << attr_type_to_string(attr_type_) << ", len=" << attr_len_

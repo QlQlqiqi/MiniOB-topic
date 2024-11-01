@@ -43,9 +43,13 @@ public:
 
   const std::string                 &view_name() const { return view_name_; }
   const std::vector<std::string>    &attr_ids() const { return attr_ids_; }
+  const std::vector<AttrInfoSqlNode> &attr_infos() const { return attr_infos_; }
+  const std::vector<std::unique_ptr<Field>>      &origin_fields() const { return origin_fields_; }
   const std::unique_ptr<SelectStmt> &select_stmt() const { return select_stmt_; }
   std::unique_ptr<SelectStmt>       &select_stmt() { return select_stmt_; }
   const std::string                 &select_sql() const { return select_sql_; }
+
+  std::vector<std::unique_ptr<Field>>      &origin_fields(){ return origin_fields_; }
 
   static RC create(Db *db, const CreateViewSqlNode &create_view, Stmt *&stmt);
 
@@ -53,5 +57,10 @@ private:
   std::string                 view_name_;
   std::vector<std::string>    attr_ids_;
   std::unique_ptr<SelectStmt> select_stmt_;
+  std::vector<AttrInfoSqlNode> attr_infos_;
+  std::vector<std::unique_ptr<Field>>         origin_fields_;
   std::string                 select_sql_;
+
+  bool is_insertable_;
+  bool is_updateable_;
 };

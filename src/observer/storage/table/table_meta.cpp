@@ -19,6 +19,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/table/table_meta.h"
 #include "storage/trx/trx.h"
 #include "json/json.h"
+#include "table_meta.h"
 
 static const Json::StaticString FIELD_TABLE_ID("table_id");
 static const Json::StaticString FIELD_TABLE_NAME("table_name");
@@ -109,6 +110,48 @@ RC TableMeta::init(int32_t table_id, const char *name, const std::vector<FieldMe
   return RC::SUCCESS;
 }
 
+RC TableMeta::init(int table_id, const std::string &name, span<const AttrInfoSqlNode> attributes) {
+   this->name_ = name;
+  if (common::is_blank(name.c_str())) {
+    LOG_ERROR("Name cannot be empty");
+    return RC::INVALID_ARGUMENT;
+  }
+
+  if (attributes.size() == 0) {
+    LOG_ERROR("Invalid argument. name=%s, field_num=%d", name, attributes.size());
+    return RC::INVALID_ARGUMENT;
+  }
+
+  RC rc = RC::SUCCESS;
+
+  int field_offset  = 0;
+
+  fields_.resize(attributes.size());
+
+  for (size_t i = 0; i < attributes.size(); i++) {
+    const AttrInfoSqlNode &attr_info = attributes[i];
+    // `i` is the col_id of fields[i]
+    rc = fields_[i].init(attr_info.name.c_str(),
+        attr_info.type,
+        field_offset,
+        attr_info.length,
+        true /*visible*/,
+        i,
+        attr_info.nullable);
+    if (OB_FAIL(rc)) {
+      LOG_ERROR("Failed to init field meta. table name=%s, field name: %s", name, attr_info.name.c_str());
+      return rc;
+    }
+    field_offset += attr_info.length;
+  }
+
+  record_size_ = field_offset;
+
+  table_id_ = table_id;
+  name_     = name;
+  LOG_INFO("Sussessfully initialized table meta. table id=%d, name=%s", table_id, name);
+  return RC::SUCCESS;
+}
 RC TableMeta::add_index(const IndexMeta &index)
 {
   indexes_.push_back(index);

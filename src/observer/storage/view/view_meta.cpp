@@ -18,6 +18,8 @@ See the Mulan PSL v2 for more details. */
 #include "common/global_context.h"
 #include "storage/view/view_meta.h"
 #include "storage/trx/trx.h"
+#include "sql/stmt/select_stmt.h"
+#include "sql/expr/expression.h"
 #include "json/json.h"
 #include "view_meta.h"
 
@@ -25,31 +27,32 @@ static const Json::StaticString FIELD_VIEW_ID("view_id");
 static const Json::StaticString FIELD_VIEW_NAME("view_name");
 static const Json::StaticString FIELD_FIELD_NAMES("view_field_names");
 static const Json::StaticString FIELD_SELECT_SQL("select_sql");
-static const Json::StaticString FIELD_INDEXES("indexes");
+static const Json::StaticString FIELD_UPDATEABLE("updateable");
+static const Json::StaticString FIELD_INSERTABLE("insertable");
+static const Json::StaticString FIELD_DELETAbLE("deleteable");
+static const Json::StaticString FIELD_HAS_AGGREGATION("has_aggregation");
 
-ViewMeta::ViewMeta(const ViewMeta &other)
-    : view_id_(other.view_id_),
-      view_name_(other.view_name_)
-{}
+ViewMeta::ViewMeta(const ViewMeta &other) : view_id_(other.view_id_), view_name_(other.view_name_) {}
 
-void ViewMeta::swap(ViewMeta &other) noexcept
+void ViewMeta::swap(ViewMeta &other) noexcept { view_name_.swap(other.view_name_); }
+
+int ViewMeta::serialize(std::ostream &os) const
 {
-  view_name_.swap(other.view_name_);
-}
-
-
-int ViewMeta::serialize(std::ostream &os) const 
-{ 
   Json::Value table_value;
-  table_value[FIELD_VIEW_ID]   = view_id_;
-  table_value[FIELD_VIEW_NAME] = view_name_;
-  table_value[FIELD_SELECT_SQL] = select_sql_; 
+  table_value[FIELD_VIEW_ID]    = view_id_;
+  table_value[FIELD_VIEW_NAME]  = view_name_;
+  table_value[FIELD_SELECT_SQL] = select_sql_;
 
   Json::Value field_names_value(Json::arrayValue);
   for (const string &field : view_field_names_) {
     field_names_value.append(field);
   }
   table_value[FIELD_FIELD_NAMES] = std::move(field_names_value);
+
+  table_value[FIELD_UPDATEABLE]      = updatable_;
+  table_value[FIELD_INSERTABLE]      = insertable_;
+  table_value[FIELD_DELETAbLE]       = deletable_;
+  table_value[FIELD_HAS_AGGREGATION] = has_aggregation_;
 
   Json::StreamWriterBuilder builder;
   Json::StreamWriter       *writer = builder.newStreamWriter();
@@ -93,7 +96,7 @@ int ViewMeta::deserialize(std::istream &is)
     LOG_ERROR("Invalid table meta. fields is not array, json value=%s", field_name_values.toStyledString().c_str());
     return -1;
   }
-  int field_num = field_name_values.size();
+  int                      field_num = field_name_values.size();
   std::vector<std::string> field_names(field_num);
   for (int i = 0; i < field_num; i++) {
     std::string &field_name = field_names[i];
@@ -109,11 +112,24 @@ int ViewMeta::deserialize(std::istream &is)
   std::string select_sql = select_sql_value.asString();
   ASSERT(!select_sql.empty(), "select sql is empty. json value=%s", select_sql.c_str());
 
+  const Json::Value &updateable_value      = view_value[FIELD_UPDATEABLE];
+  const Json::Value &insertable_value      = view_value[FIELD_INSERTABLE];
+  const Json::Value &deletable_value       = view_value[FIELD_DELETAbLE];
+  const Json::Value &has_aggregation_value = view_value[FIELD_HAS_AGGREGATION];
+  ASSERT(updateable_value.isBool(), "updateable should be bool");
+  ASSERT(insertable_value.isBool(), "insertable should be bool");
+  ASSERT(deletable_value.isBool(), "deletable should be bool");
+  ASSERT(has_aggregation_value.isBool(),"has_aggregation should be bool");
+
   view_id_ = view_id;
   view_name_.swap(view_name);
   view_field_names_.swap(field_names);
   select_sql_ = std::move(select_sql);
 
+  updatable_       = updateable_value.asBool();
+  insertable_      = insertable_value.asBool();
+  deletable_       = deletable_value.asBool();
+  has_aggregation_ = has_aggregation_value.asBool();
   return (int)(is.tellg() - old_pos);
 }
 
@@ -121,12 +137,31 @@ int ViewMeta::get_serial_size() const { return 0; }
 
 void ViewMeta::to_string(std::string &output) const {}
 
-RC ViewMeta::init(
-    int32_t view_id, const char *view_name, const std::vector<std::string> *view_fields_names, const std::string &select_sql)
+RC ViewMeta::init(int32_t view_id, const char *view_name, const std::vector<std::string> *view_fields_names,
+    std::unique_ptr<SelectStmt> &select_stmt, const std::string &select_sql)
 {
-  this->view_id_ = view_id;
-  this->view_name_ = view_name;
+  this->view_id_          = view_id;
+  this->view_name_        = view_name;
   this->view_field_names_ = *view_fields_names;
-  this->select_sql_ = select_sql;
+  this->select_sql_       = select_sql;
+  this->insertable_ = this->updatable_ = this->deletable_ = true;
+  
+  if(select_stmt->tables().size() > 1){
+    this->insertable_ = false;
+    this->updatable_ = false;
+    this->deletable_ = false;
+  }
+
+  for(auto& expression: select_stmt->query_expressions()){
+    if(expression->type() != ExprType::FIELD){
+      this->insertable_ = false;
+      this->updatable_ = false;
+    }
+
+    if(expression->type() == ExprType::AGGREGATION){
+      this->has_aggregation_ = true;
+    }
+  }
+
   return RC::SUCCESS;
 }

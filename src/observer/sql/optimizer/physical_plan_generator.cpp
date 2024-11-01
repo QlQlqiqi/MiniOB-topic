@@ -48,8 +48,11 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/hash_group_by_physical_operator.h"
 #include "sql/operator/scalar_group_by_physical_operator.h"
 #include "sql/operator/table_scan_vec_physical_operator.h"
+#include "sql/operator/view_get_logical_operator.h"
+#include "sql/operator/view_scan_physical_operator.h"
 #include "sql/optimizer/physical_plan_generator.h"
 #include "storage/index/index.h"
+#include "physical_plan_generator.h"
 
 using namespace std;
 
@@ -64,6 +67,10 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
 
     case LogicalOperatorType::TABLE_GET: {
       return create_plan(static_cast<TableGetLogicalOperator &>(logical_operator), oper);
+    } break;
+
+    case LogicalOperatorType::VIEW_GET: {
+      return create_plan(static_cast<ViewGetLogicalOperator &>(logical_operator), oper);
     } break;
 
     case LogicalOperatorType::PREDICATE: {
@@ -146,7 +153,7 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
   for (auto &expr : predicates) {
     if (expr->type() == ExprType::COMPARISON) {
       auto comparison_expr = static_cast<ComparisonExpr *>(expr.get());
-      auto f               = [this](SubQueryExpr *sub_query_expr) {
+      auto f               = [&](SubQueryExpr *sub_query_expr) {
         std::unique_ptr<PhysicalOperator> sub_query_phy_oper;
         if (RC rc = create(*sub_query_expr->logical_oper().get(), sub_query_phy_oper); RC::SUCCESS != rc) {
           return rc;
@@ -156,8 +163,12 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
       };
 
       RC rc2 = RC::SUCCESS;
-      if (auto left  = comparison_expr->left().get();  left->type() == ExprType::SUBQUERY)  { rc2 = f(static_cast<SubQueryExpr *>(left)); }
-      if (auto right = comparison_expr->right().get(); right->type() == ExprType::SUBQUERY) { rc2 = f(static_cast<SubQueryExpr *>(right)); }
+      if (auto left = comparison_expr->left().get(); left->type() == ExprType::SUBQUERY) {
+        rc2 = f(static_cast<SubQueryExpr *>(left));
+      }
+      if (auto right = comparison_expr->right().get(); right->type() == ExprType::SUBQUERY) {
+        rc2 = f(static_cast<SubQueryExpr *>(right));
+      }
       if (OB_FAIL(rc2)) {
         return rc2;
       }
@@ -443,6 +454,26 @@ RC PhysicalPlanGenerator::create_plan(OrderByLogicalOperator &logical_oper, std:
   }
   order_by_oper->add_child(std::move(child_physical_oper));
   oper = std::move(order_by_oper);
+  return RC::SUCCESS;
+}
+
+RC PhysicalPlanGenerator::create_plan(ViewGetLogicalOperator &logical_oper, std::unique_ptr<PhysicalOperator> &oper)
+{
+  auto &select_logical_operator = logical_oper.select_logical_operator();
+  auto view = logical_oper.view();
+  ASSERT(select_logical_operator != nullptr, "view get logical operator should have a select logical operator");
+  ASSERT(view != nullptr && view->type() == TableType::VIEW, "view should be a select view");
+  unique_ptr<PhysicalOperator> select_physical_oper;
+  RC rc = create(*select_logical_operator, select_physical_oper);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to create select physical operator. rc=%s", strrc(rc));
+    return rc;
+  }
+
+  auto is_read = view->view_meta().read_only()? ReadWriteMode::READ_ONLY: ReadWriteMode::READ_WRITE;
+  unique_ptr<ViewScanPhysicalOperator> view_scan_oper = make_unique<ViewScanPhysicalOperator>(view, is_read);
+  view_scan_oper->add_child(std::move(select_physical_oper));
+  oper = std::move(view_scan_oper);
   return RC::SUCCESS;
 }
 

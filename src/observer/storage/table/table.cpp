@@ -31,6 +31,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/table/table.h"
 #include "storage/trx/trx.h"
 
+
 Table::~Table()
 {
   if (record_handler_ != nullptr) {
@@ -457,7 +458,7 @@ RC Table::create_index(Trx *trx, const std::vector<const FieldMeta*> &field_meta
   for (size_t i = 0; i < field_metas.size(); i++) {
     const FieldMeta *field_meta = field_metas[i];
     int              field_id   = 0;
-    for (FieldMeta field : *table_meta_.field_metas()) {
+    for (FieldMeta field : table_meta_.field_metas()) {
       if (0 == strcmp(field.name(), field_meta->name())) {
         field_ids.emplace_back(field_id);
         break;

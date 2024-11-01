@@ -19,6 +19,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/span.h"
 #include "common/lang/functional.h"
 #include "sql/stmt/select_stmt.h"
+#include "sql/operator/logical_operator.h"
 
 struct RID;
 class Record;
@@ -33,33 +34,40 @@ class IndexScanner;
 class RecordDeleter;
 class Trx;
 class Db;
-class SelectStmt;
+class CreateViewStmt;
 
 /**
  * @brief 表
  *
  */
-class View
+class View : public Table
 {
 public:
   View() = default;
-  ~View();
+  virtual ~View();
 
-  RC create(Db *db, int32_t view_id, const char *view_name, const char *view_file_path, const char *base_dir,
-      std::unique_ptr<SelectStmt> &&select, const std::vector<std::string> &attr_ids, const std::string &select_sql);
-  RC open(Db *db, const char *meta_file, const char *base_dir);
-  RC open_without_parse(const char *meta_file, const char *base_dir);
+  RC create(Db *db, int32_t view_id, const char *view_name, const char *base_dir,
+      CreateViewStmt *create_view_stmt);
+  RC open(Db *db, const char *view_meta_file, const char* view_table_meta_file,  const char *base_dir);
+  RC drop(const char *path, const char *name, const char *base_dir) override;
 
 public:
-  std::string                        name() { return view_meta_.name(); }
+  const char*                        name() const{ return view_meta_.view_name(); }
   int32_t                            view_id() const { return view_meta_.view_id(); }
-  const std::unique_ptr<SelectStmt> &select() { return select_stmt_; }
-  const ViewMeta                    &view_meta() { return view_meta_; }
+  const std::unique_ptr<SelectStmt> &select_stmt() const{ return select_stmt_; }
+  const ViewMeta                    &view_meta() const{ return view_meta_; }
+  const TableMeta                   &table_meta() const{return table_meta_;}
+  virtual TableType                  type() const { return TableType::VIEW; }
+  // void init_table_meta();
+  std::unique_ptr<SelectStmt> &select_stmt() { return select_stmt_; }
+
+  RC                        generate_select_stmt();
+
 
 private:
-  Db                         *db_ = nullptr;
-  string                      view_name_;
-  string                      base_dir_;
+  RC open(Db *db, const char *meta_file, const char *base_dir) override {return RC::UNIMPLEMENTED;}
   ViewMeta                    view_meta_;
-  std::unique_ptr<SelectStmt> select_stmt_;
+  std::unique_ptr<SelectStmt>      select_stmt_;
+  std::vector<std::unique_ptr<Field>> origin_fields_;
+
 };

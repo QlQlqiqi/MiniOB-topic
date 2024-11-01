@@ -41,6 +41,8 @@ public:
   RC init(int32_t table_id, const char *name, const std::vector<FieldMeta> *trx_fields,
       std::span<const AttrInfoSqlNode> attributes, StorageFormat storage_format);
 
+  RC init(int table_id, const std::string &name, std::span<const AttrInfoSqlNode> attributes);
+
   RC add_index(const IndexMeta &index);
 
 public:
@@ -50,7 +52,7 @@ public:
   const FieldMeta    *field(int index) const;
   const FieldMeta    *field(const char *name) const;
   const FieldMeta    *find_field_by_offset(int offset) const;
-  auto                field_metas() const -> const std::vector<FieldMeta>                *{ return &fields_; }
+  auto                field_metas() const -> const std::vector<FieldMeta>                &{ return fields_; }
   auto                trx_fields() const -> std::span<const FieldMeta>;
   const StorageFormat storage_format() const { return storage_format_; }
 
@@ -70,6 +72,8 @@ public:
   int  get_serial_size() const override;
   void to_string(std::string &output) const override;
   void desc(std::ostream &os) const;
+
+  friend class View;
 
 protected:
   int32_t                table_id_ = -1;

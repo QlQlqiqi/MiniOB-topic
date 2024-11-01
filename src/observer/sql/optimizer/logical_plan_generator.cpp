@@ -26,6 +26,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/predicate_logical_operator.h"
 #include "sql/operator/project_logical_operator.h"
 #include "sql/operator/table_get_logical_operator.h"
+#include "sql/operator/view_get_logical_operator.h"
 #include "sql/operator/group_by_logical_operator.h"
 #include "sql/operator/order_by_logical_operator.h"
 
@@ -109,7 +110,21 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
 
   //join operator
   for (Table *table : tables) {
-    unique_ptr<LogicalOperator> table_get_oper(new TableGetLogicalOperator(table, ReadWriteMode::READ_ONLY));
+    unique_ptr<LogicalOperator> table_get_oper = nullptr;
+
+    switch(table->type()){
+      case TableType::TABLE:{
+        table_get_oper.reset(new TableGetLogicalOperator(table, ReadWriteMode::READ_ONLY));
+      } break;
+      case TableType::VIEW:{
+        table_get_oper.reset(new ViewGetLogicalOperator(static_cast<View*>(table), ReadWriteMode::READ_ONLY));
+      } break;
+      default:{
+        ASSERT(false, "unknown table type");
+        return RC::INTERNAL;
+      }
+    }
+
     if (table_oper == nullptr) {
       table_oper = std::move(table_get_oper);
     } else {
@@ -223,9 +238,9 @@ RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<Logical
     if (expr->type() == ExprType::COMPARISON)
     {
       auto comp_expr = static_cast<ComparisonExpr *>(pre_oper->expressions()[0].get());
-      auto f         = [this](SubQueryExpr *sub_query_expr) {
+      auto f         = [&](SubQueryExpr *sub_query_expr) {
         std::unique_ptr<LogicalOperator> sub_query_logi_oper;
-        if (RC rc = create_plan(sub_query_expr->select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
+        if (RC rc = LogicalPlanGenerator::create_plan(sub_query_expr->select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
           return rc;
         }
         sub_query_expr->set_logical_oper(std::move(sub_query_logi_oper));

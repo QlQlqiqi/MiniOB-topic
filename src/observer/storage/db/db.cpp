@@ -31,6 +31,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/trx/trx.h"
 #include "storage/clog/disk_log_handler.h"
 #include "storage/clog/integrated_log_replayer.h"
+#include "sql/stmt/create_view_stmt.h"
 #include "db.h"
 
 using namespace common;
@@ -258,6 +259,7 @@ RC Db::open_all_tables()
 RC Db::open_all_views()
 {
   vector<string> view_meta_files;
+  vector<string> view_table_meta_files;
 
   int ret = list_file(path_.c_str(), VIEW_META_FILE_PATTERN, view_meta_files);
   if (ret < 0) {
@@ -265,20 +267,26 @@ RC Db::open_all_views()
     return RC::IOERR_READ;
   }
 
+  ret = list_file(path_.c_str(), VIEW_TABLE_META_FILE_PATTERN, view_table_meta_files);
+
+  ASSERT(view_meta_files.size() == view_table_meta_files.size(), "should be eqaul");
   RC rc = RC::SUCCESS;
-  for (const string &filename : view_meta_files) {
+  for (size_t i = 0; i < view_meta_files.size(); i++) {
+
+    const string& view_meta_filename = view_meta_files[i];
+    const string& view_table_meta_filename = view_table_meta_files[i];
     View *view = new View();
-    rc         = view->open(this, filename.c_str(), path_.c_str());
+    rc         = view->open(this, view_meta_filename.c_str(), view_table_meta_filename.c_str(), path_.c_str());
     if (rc != RC::SUCCESS) {
       delete view;
-      LOG_ERROR("Failed to open table. filename=%s", filename.c_str());
+      LOG_ERROR("Failed to open table. view_meta_filename=%s, view_table_meta_filename=%s", view_meta_filename.c_str(), view_table_meta_filename.c_str());
       return rc;
     }
 
-    if (opened_views_.count(view->name()) != 0) {
+    if (opened_tables_.count(view->name()) != 0) {
       LOG_ERROR("Duplicate table with difference file name. table=%s, the other filename=%s",
-          view->name(), filename.c_str());
-      // 在这里原本先删除table后调用table->name()方法，犯了use-after-free的错误
+          view->name(), view_meta_filename.c_str());
+      // 在这里原本先删除view后调用view->name()方法，犯了use-after-free的错误
       delete view;
       return RC::INTERNAL;
     }
@@ -286,37 +294,36 @@ RC Db::open_all_views()
     if (view->view_id() >= next_table_id_) {
       next_view_id_ = view->view_id() + 1;
     }
-    opened_views_[view->name()] = view;
-    LOG_INFO("Open view: %s, file: %s", view->name(), filename.c_str());
+    opened_tables_[view->name()] = view;
+    LOG_INFO("Open view: %s, file: %s", view->name(), view_meta_filename.c_str());
   }
 
-  LOG_INFO("All view have been opened. num=%d", opened_views_.size());
+
+  LOG_INFO("All view have been opened. num=%d", opened_tables_.size());
   return rc;
 }
 
-RC Db::create_view(const char *view_name, const std::vector<std::string> &attr_ids, std::unique_ptr<SelectStmt> &&stmt,
-    const std::string &select_sql)
+RC Db::create_view(CreateViewStmt *create_view_stmt)
 {
-  RC rc = RC::SUCCESS;
+  const char *view_name = create_view_stmt->view_name().c_str();
+  RC          rc        = RC::SUCCESS;
   // check table_name
-  if (opened_views_.count(view_name) != 0) {
+  if (opened_tables_.count(view_name) != 0) {
     LOG_WARN("%s has been opened before.", view_name);
     return RC::SCHEMA_TABLE_EXIST;
   }
 
   // 文件路径可以移到 View 模块
-  string  view_file_path = view_meta_file(path_.c_str(), view_name);
   View   *view           = new View();
   int32_t view_id        = next_view_id_++;
-  rc                     = view->create(
-      this, view_id, view_name, view_file_path.c_str(), path_.c_str(), std::move(stmt), attr_ids, select_sql);
+  rc = view->create(this, view_id, view_name, path_.c_str(), create_view_stmt);
   if (rc != RC::SUCCESS) {
     LOG_ERROR("Failed to create table %s.", view_name);
     delete view;
     return rc;
   }
 
-  opened_views_[view_name] = view;
+  opened_tables_[view_name] = view;
   LOG_INFO("Create table success. table name=%s, table_id:%d", view_name, view_id);
   return RC::SUCCESS;
 }
@@ -338,10 +345,12 @@ RC Db::sync()
   // 调用所有表的sync函数刷新数据到磁盘
   for (const auto &table_pair : opened_tables_) {
     Table *table = table_pair.second;
-    rc           = table->sync();
-    if (rc != RC::SUCCESS) {
-      LOG_ERROR("Failed to flush table. table=%s.%s, rc=%d:%s", name_.c_str(), table->name(), rc, strrc(rc));
-      return rc;
+    if(table->type() == TableType::TABLE){
+      rc           = table->sync();
+      if (rc != RC::SUCCESS) {
+        LOG_ERROR("Failed to flush table. table=%s.%s, rc=%d:%s", name_.c_str(), table->name(), rc, strrc(rc));
+        return rc;
+      }
     }
     LOG_INFO("Successfully sync table db:%s, table:%s.", name_.c_str(), table->name());
   }

@@ -31,17 +31,8 @@ RC CreateViewExecutor::execute(SQLStageEvent *sql_event)
       static_cast<int>(stmt->type()));
 
   CreateViewStmt *create_view_stmt = static_cast<CreateViewStmt *>(stmt);
-
-  const std::string& select_sql =  create_view_stmt->select_sql();
-
-  // auto &select_stmt = create_view_stmt->select_stmt();
-
   
-  
-  // SqlResult sql_result(session);
-
-  const char *view_name = create_view_stmt->view_name().c_str();
-  RC rc = session->get_current_db()->create_view(view_name, create_view_stmt->attr_ids(), std::move(create_view_stmt->select_stmt()), select_sql);
+  RC rc = session->get_current_db()->create_view(create_view_stmt);
 
   return rc;
 }
