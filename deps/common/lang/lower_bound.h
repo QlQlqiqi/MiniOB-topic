@@ -28,9 +28,10 @@ namespace common {
  * @param _found 如果给定，会返回是否存在于当前的序列中
  * @return ForwardIterator 指向lower bound结果的iterator。如果大于最大的值，那么会指向last
  */
+// ignore 为 true 时，忽略 null 的唯一性，也就是说，用 null 查找 null，也会成功
 template <typename ForwardIterator, typename T, typename Compare>
-ForwardIterator lower_bound(
-    ForwardIterator first, ForwardIterator last, const T &val, Compare comp, bool *_found = nullptr)
+ForwardIterator lower_bound(ForwardIterator first, ForwardIterator last, const T &val, Compare comp,
+    bool *_found = nullptr, bool ignore = false)
 {
   bool            found = false;
   ForwardIterator iter;
@@ -40,7 +41,7 @@ ForwardIterator lower_bound(
     iter      = first;
     auto step = last_count / 2;
     advance(iter, step);
-    int result = comp(*iter, val);
+    int result = comp(*iter, val, ignore);
     if (0 == result) {
       first = iter;
       found = true;

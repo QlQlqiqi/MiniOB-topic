@@ -222,16 +222,18 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
       // 这里的 value 应该是没有 isnull 标记的
       ASSERT(meta->len() == value.length() + 1, "initial nullable value should be without isnull flag");
     }
-    Record left_record;
-    table->make_record(1, &value, left_record);
-    Record right_record;
-    table->make_record(1, &value, right_record);
+    Record record;
+    char *record_data = (char *)malloc(meta->len());
+    memset(record_data, 0, meta->len());
+    record_data[0] = value.is_null();
+    memcpy(record_data + 1, value.data(), value.length());
+    record.set_data_owner(record_data, meta->len());
     IndexScanPhysicalOperator *index_scan_oper = new IndexScanPhysicalOperator(table,
         index,
         table_get_oper.read_write_mode(),
-        &left_record,
+        &record,
         true /*left_inclusive*/,
-        &right_record,
+        &record,
         true /*right_inclusive*/,
         meta);
 

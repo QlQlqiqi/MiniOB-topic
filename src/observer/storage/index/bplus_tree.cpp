@@ -225,12 +225,13 @@ char *LeafIndexNodeHandler::value_at(int index)
   return __value_at(index);
 }
 
-int LeafIndexNodeHandler::lookup(const KeyComparator &comparator, const char *key, bool *found /* = nullptr */) const
+int LeafIndexNodeHandler::lookup(
+    const KeyComparator &comparator, const char *key, bool *found /* = nullptr */, bool force /* = false */) const
 {
   const int                    size = this->size();
   common::BinaryIterator<char> iter_begin(item_size(), __key_at(0));
   common::BinaryIterator<char> iter_end(item_size(), __key_at(size));
-  common::BinaryIterator<char> iter = lower_bound(iter_begin, iter_end, key, comparator, found);
+  common::BinaryIterator<char> iter = lower_bound(iter_begin, iter_end, key, comparator, found, force);
   return iter - iter_begin;
 }
 
@@ -267,7 +268,7 @@ RC LeafIndexNodeHandler::remove(int index)
 int LeafIndexNodeHandler::remove(const char *key, const KeyComparator &comparator)
 {
   bool found = false;
-  int  index = lookup(comparator, key, &found);
+  int  index = lookup(comparator, key, &found, true);
   if (found) {
     this->remove(index);
     return 1;
