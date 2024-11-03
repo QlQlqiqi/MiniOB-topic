@@ -225,6 +225,10 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           [[fallthrough]];
         }
         default: {
+          ASSERT((size_t)f.nullable() <= 1, "we assume that casting a bool value to an integer returns either a 0 or an 1.");
+          // 先置 is_null 标志位为 0
+          table_record.set_field(f.offset(), f.nullable(), "\0");
+          // 然后修改值
           rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
