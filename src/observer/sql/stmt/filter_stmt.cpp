@@ -48,7 +48,7 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
     filter_expressions.reserve(1);
     auto l  = conditions->Clone();
 
-    RC   rc = expression_binder.bind_expression(l, filter_expressions);
+    RC   rc = expression_binder.bind_expression(l, filter_expressions, false, default_table);
     if (OB_FAIL(rc)) {
       LOG_INFO("bind expression failed. rc=%s", strrc(rc));
       return rc;
@@ -71,7 +71,11 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
       return rc;
     };
 
-    filter_expressions[0]->traverse(prepare_subquery);
+    if (OB_FAIL(filter_expressions[0]->traverse(prepare_subquery)))
+    {
+      LOG_WARN("zyq: filter expr traverse failed");
+      return RC::INTERNAL;
+    };
     tmp_stmt->set_expr(std::move(filter_expressions[0]));
   }
 

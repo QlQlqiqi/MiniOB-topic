@@ -299,7 +299,7 @@ public:
   virtual RC traverse(const std::function<RC(Expression *)>& func) override
   {
     RC rc;
-    if (OB_FAIL(rc = child_->traverse(func)))
+    if (child_ && OB_FAIL(rc = child_->traverse(func)))
     {
       return rc;
     }
@@ -363,11 +363,11 @@ public:
   virtual RC traverse(const std::function<RC(Expression *)>& func) override
   {
     RC rc;
-    if (OB_FAIL(rc = left_->traverse(func)))
+    if (left_ && OB_FAIL(rc = left_->traverse(func)))
     {
       return rc;
     }
-    if (OB_FAIL(rc = right_->traverse(func)))
+    if (right_ && OB_FAIL(rc = right_->traverse(func)))
     {
       return rc;
     }
@@ -421,7 +421,7 @@ public:
     RC rc;
     for (auto& child : children_)
     {
-      if (OB_FAIL(rc = child->traverse(func)))
+      if (child && OB_FAIL(rc = child->traverse(func)))
       {
         return rc;
       }
@@ -486,11 +486,11 @@ public:
   virtual RC traverse(const std::function<RC(Expression *)>& func) override
   {
     RC rc;
-    if (OB_FAIL(rc = left_->traverse(func)))
+    if (left_ && OB_FAIL(rc = left_->traverse(func)))
     {
       return rc;
     }
-    if (OB_FAIL(rc = right_->traverse(func)))
+    if (right_ && OB_FAIL(rc = right_->traverse(func)))
     {
       return rc;
     }
@@ -583,7 +583,7 @@ public:
   virtual RC traverse(const std::function<RC(Expression *)>& func) override
   {
     RC rc;
-    if (OB_FAIL(rc = child_->traverse(func)))
+    if (child_ && OB_FAIL(rc = child_->traverse(func)))
     {
       return rc;
     }
@@ -635,11 +635,11 @@ public:
   virtual RC traverse(const std::function<RC(Expression *)>& func) override
   {
     RC rc;
-    if (OB_FAIL(rc = left_->traverse(func)))
+    if (left_ && OB_FAIL(rc = left_->traverse(func)))
     {
       return rc;
     }
-    if (OB_FAIL(rc = right_->traverse(func)))
+    if (right_ && OB_FAIL(rc = right_->traverse(func)))
     {
       return rc;
     }
@@ -762,7 +762,7 @@ public:
     RC rc;
     for (auto& expr : exprs_)
     {
-      if (OB_FAIL(rc = expr->traverse(func)))
+      if (expr && OB_FAIL(rc = expr->traverse(func)))
       {
         return rc;
       }

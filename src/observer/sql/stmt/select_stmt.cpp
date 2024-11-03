@@ -51,7 +51,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
 
   for (auto& [name, table] : parents) {
     binder_context.add_table(table);
-    tables.push_back(table);
+    // 处理子查询时，这里区分上级查询和本级查询涉及的表，上级查询不做 tables.push_back(table);。
     table_map.insert({name, table});
   }
 
