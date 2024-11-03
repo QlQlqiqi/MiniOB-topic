@@ -134,7 +134,7 @@ public:
   // 根据 field 和存储 offset 和 length 的 record 获取具体的 text，
   // 并存入 result；
   // NOTE: 这里的 record 是不包含 nullable 位置的
-  RC get_text_from_record(const char* record, Value &result) const;
+  RC get_text_from_record(const char* record, Value &result, const bool high_vector = false) const;
 
   // ===================
   // | offset | length |

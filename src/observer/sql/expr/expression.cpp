@@ -258,6 +258,7 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
   if (rc != RC::SUCCESS)
   {
     LOG_WARN("failed to get value of left expression. rc=%s", strrc(rc));
+    if (rc == RC::RECORD_EOF) { rc = RC::INVALID_ARGUMENT; }
     return rc;
   }
 
