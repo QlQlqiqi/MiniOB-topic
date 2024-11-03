@@ -220,22 +220,6 @@ RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<Logical
   if (expr) {
     pre_oper = std::make_unique<PredicateLogicalOperator>(expr->Clone());
 
-    if (expr->type() == ExprType::COMPARISON)
-    {
-      auto comp_expr = static_cast<ComparisonExpr *>(pre_oper->expressions()[0].get());
-      auto process_sub_query = [this](SubQueryExpr *sub_query_expr) {
-        std::unique_ptr<LogicalOperator> sub_query_logi_oper;
-        if (RC rc = create_plan(sub_query_expr->select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
-          LOG_WARN("1: create sub query logical operator failed");
-          return rc;
-        }
-        sub_query_expr->set_logical_oper(std::move(sub_query_logi_oper));
-        return RC::SUCCESS;
-      };
-
-      if (auto left  = comp_expr->left().get();  left->type() == ExprType::SUBQUERY)  { rc = process_sub_query(static_cast<SubQueryExpr *>(left)); }
-      if (auto right = comp_expr->right().get(); right->type() == ExprType::SUBQUERY) { rc = process_sub_query(static_cast<SubQueryExpr *>(right)); }
-    }
   }
   logical_operator = std::move(pre_oper);
   return rc;
@@ -270,25 +254,6 @@ RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<Logical
   unique_ptr<LogicalOperator> predicate_oper;
 
   RC rc = create_plan(filter_stmt, predicate_oper);
-
-  auto process_sub_query = [this](SubQueryExpr *sub_query_expr) {
-    std::unique_ptr<LogicalOperator> sub_query_logi_oper;
-    if (RC rc = create_plan(sub_query_expr->select_stmt().get(), sub_query_logi_oper); RC::SUCCESS != rc) {
-      return rc;
-    }
-    sub_query_expr->set_logical_oper(std::move(sub_query_logi_oper));
-    return RC::SUCCESS;
-  };
-
-  for (auto& [_, value] : update_stmt->values()) {
-    if (value->type() != ExprType::SUBQUERY) { continue; }
-    rc = process_sub_query(static_cast<SubQueryExpr*>(value.get()));
-    if (RC::SUCCESS != rc) {
-      LOG_WARN("2: create sub query logical operator failed");
-      return rc;
-    }
-  }
-
 
   if (rc != RC::SUCCESS) {
     return rc;

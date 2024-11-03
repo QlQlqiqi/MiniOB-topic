@@ -134,6 +134,11 @@ public:
    */
   virtual RC eval(Chunk &chunk, std::vector<uint8_t> &select) { return RC::UNIMPLEMENTED; }
 
+  /**
+   * @brief 后序遍历对表达式及其所有子表达式进行特定操作。
+   */
+  virtual RC traverse(const std::function<RC(Expression *)>& func) { return func(this); }
+
 protected:
   /**
    * @brief 表达式在下层算子返回的 chunk 中的位置
@@ -291,6 +296,16 @@ public:
 
   std::unique_ptr<Expression> &child() { return child_; }
 
+  virtual RC traverse(const std::function<RC(Expression *)>& func) override
+  {
+    RC rc;
+    if (OB_FAIL(rc = child_->traverse(func)))
+    {
+      return rc;
+    }
+    return func(this);
+  }
+
 private:
   RC cast(const Value &value, Value &cast_value) const;
 
@@ -345,6 +360,20 @@ public:
   template <typename T>
   RC compare_column(const Column &left, const Column &right, std::vector<uint8_t> &result) const;
 
+  virtual RC traverse(const std::function<RC(Expression *)>& func) override
+  {
+    RC rc;
+    if (OB_FAIL(rc = left_->traverse(func)))
+    {
+      return rc;
+    }
+    if (OB_FAIL(rc = right_->traverse(func)))
+    {
+      return rc;
+    }
+    return func(this);
+  }
+
 private:
   CompOp                      comp_;
   std::unique_ptr<Expression> left_;
@@ -386,6 +415,20 @@ public:
   Type conjunction_type() const { return conjunction_type_; }
 
   std::vector<std::unique_ptr<Expression>> &children() { return children_; }
+
+  virtual RC traverse(const std::function<RC(Expression *)>& func) override
+  {
+    RC rc;
+    for (auto& child : children_)
+    {
+      if (OB_FAIL(rc = child->traverse(func)))
+      {
+        return rc;
+      }
+    }
+    
+    return func(this);
+  }
 
 private:
   Type                                     conjunction_type_;
@@ -440,6 +483,20 @@ public:
 
   static bool exp2value(Expression *exp, Value *value);
 
+  virtual RC traverse(const std::function<RC(Expression *)>& func) override
+  {
+    RC rc;
+    if (OB_FAIL(rc = left_->traverse(func)))
+    {
+      return rc;
+    }
+    if (OB_FAIL(rc = right_->traverse(func)))
+    {
+      return rc;
+    }
+    return func(this);
+  }
+
   std::unique_ptr<Expression> &left() { return left_; }
   std::unique_ptr<Expression> &right() { return right_; }
 
@@ -475,6 +532,8 @@ public:
 
   RC       get_value(const Tuple &tuple, Value &value) const override { return RC::INTERNAL; }
   AttrType value_type() const override { return child_->value_type(); }
+
+  virtual RC traverse(const std::function<RC(Expression *)> &func) override { return RC::INTERNAL; }
 
 private:
   std::string                 aggregate_name_;
@@ -521,6 +580,16 @@ public:
 
   std::unique_ptr<Aggregator> create_aggregator() const;
 
+  virtual RC traverse(const std::function<RC(Expression *)>& func) override
+  {
+    RC rc;
+    if (OB_FAIL(rc = child_->traverse(func)))
+    {
+      return rc;
+    }
+    return func(this);
+  }
+
 public:
   static RC type_from_string(const char *type_str, Type &type);
 
@@ -562,6 +631,20 @@ public:
   std::unique_ptr<Expression> &left() { return left_; }
   const std::unique_ptr<Expression> &right() const { return right_; }
   std::unique_ptr<Expression> &right() { return right_; }
+
+  virtual RC traverse(const std::function<RC(Expression *)>& func) override
+  {
+    RC rc;
+    if (OB_FAIL(rc = left_->traverse(func)))
+    {
+      return rc;
+    }
+    if (OB_FAIL(rc = right_->traverse(func)))
+    {
+      return rc;
+    }
+    return func(this);
+  }
 
 private:
   RC calc_l2_distance(const Value &left, const Value &right, Value &result) const;
@@ -608,25 +691,27 @@ public:
     return ret;
   }
 
+  virtual RC traverse(const std::function<RC(Expression *)>& func) override
+  {
+    return func(this);
+  }
+
+
   const std::shared_ptr<SelectSqlNode>    &sql_node() const;
   void                                     set_select_stmt(SelectStmt *stmt) const;
   const std::shared_ptr<SelectStmt>       &select_stmt() const;
-  void                                     set_logical_oper(std::unique_ptr<LogicalOperator> &&oper);
-  const std::unique_ptr<LogicalOperator>  &logical_oper();
-  void                                     set_physical_oper(std::unique_ptr<PhysicalOperator> &&oper);
-  const std::unique_ptr<PhysicalOperator> &physical_oper();
 
 private:
   RC _open(Trx *trx) const;
 
-  std::shared_ptr<SelectSqlNode>      sql_node_;
-  mutable std::shared_ptr<SelectStmt> stmt_;
-  std::unique_ptr<LogicalOperator>    logical_oper_;
-  std::unique_ptr<PhysicalOperator>   physical_oper_;
-  mutable bool                        is_open_         = false;
-  mutable std::vector<Value>          selected_values_;
-  mutable bool                        cached_          = false;
-  mutable size_t                      current_         = 0;
+  std::shared_ptr<SelectSqlNode>              sql_node_;
+  mutable std::shared_ptr<SelectStmt>         stmt_;
+  mutable std::unique_ptr<LogicalOperator>    logical_oper_;
+  mutable std::unique_ptr<PhysicalOperator>   physical_oper_;
+  mutable bool                                is_open_ = false;
+  mutable std::vector<Value>                  selected_values_;
+  mutable bool                                cached_  = false;
+  mutable size_t                              current_ = 0;
 };
 
 class ExprListExpr : public EnumerableExpr
@@ -671,6 +756,21 @@ public:
     new_expr->set_name(name());
     return new_expr;
   }
+
+  virtual RC traverse(const std::function<RC(Expression *)>& func) override
+  {
+    RC rc;
+    for (auto& expr : exprs_)
+    {
+      if (OB_FAIL(rc = expr->traverse(func)))
+      {
+        return rc;
+      }
+    }
+    
+    return func(this);
+  }
+  
 private:
   mutable size_t cur_idx_ = 0;
   std::vector<std::unique_ptr<Expression>> exprs_;

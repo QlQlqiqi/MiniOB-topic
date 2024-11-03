@@ -77,7 +77,8 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
     if (value->type() == ExprType::SUBQUERY) {
       SubQueryExpr* subquery_expr = static_cast<SubQueryExpr*>(value);
       Stmt * select_stmt = nullptr;
-      if (RC rc = SelectStmt::create(db, *subquery_expr->sql_node(), select_stmt); RC::SUCCESS != rc) {
+      // TODO(zyq): 如果必要，在此处支持update与关联子查询联用
+      if (RC rc = SelectStmt::create(db, *subquery_expr->sql_node(), select_stmt, {}); RC::SUCCESS != rc) {
         LOG_WARN("create sub query stmt failed, rc=%s", strrc(rc));
         return rc;
       }
