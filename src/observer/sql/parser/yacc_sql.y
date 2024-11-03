@@ -507,7 +507,7 @@ opt_null:
     /* empty */
     {
       // 根据 primary-null.result 来看，默认是 not null
-      $$ = false;
+      $$ = true;
     }
     | NOT NULL_T
     {

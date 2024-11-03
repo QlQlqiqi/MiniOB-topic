@@ -39,7 +39,8 @@ RC PlainCommunicator::read_event(SessionEvent *&event)
   int data_len = 0;
   int read_len = 0;
 
-  const int    max_packet_size = 8192;
+  // text 最多 65535
+  const int    max_packet_size = 338192;
   vector<char> buf(max_packet_size);
 
   // 持续接收消息，直到遇到'\0'。将'\0'遇到的后续数据直接丢弃没有处理，因为目前仅支持一收一发的模式
@@ -74,6 +75,11 @@ RC PlainCommunicator::read_event(SessionEvent *&event)
     }
 
     data_len += read_len;
+    // 不能超量读取
+    if(data_len >= max_packet_size) {
+      data_len = max_packet_size + 1;
+      break;
+    }
   }
 
   if (data_len > max_packet_size) {
@@ -130,8 +136,25 @@ RC PlainCommunicator::write_debug(SessionEvent *request, bool &need_disconnect)
   SqlDebug &sql_debug = request->sql_debug();
 
   const list<string> &debug_infos = sql_debug.get_debug_infos();
+  size_t              cnt         = 0;
+
   for (auto &debug_info : debug_infos) {
-    RC rc = writer_->writen(debug_message_prefix_.data(), debug_message_prefix_.size());
+    cnt += debug_info.length() + 3;
+
+    char newline = '#';
+    if (cnt >= 260) {   // 线上环境每行最多260字符
+      newline = '\n';
+      cnt = debug_info.length() + 2;
+    }
+
+    RC rc = writer_->writen(&newline, 1);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to send new line to client. err=%s", strerror(errno));
+      need_disconnect = true;
+      return RC::IOERR_WRITE;
+    }
+
+    rc = writer_->writen(debug_message_prefix_.data(), debug_message_prefix_.size());
     if (OB_FAIL(rc)) {
       LOG_WARN("failed to send data to client. err=%s", strerror(errno));
       need_disconnect = true;
@@ -141,15 +164,6 @@ RC PlainCommunicator::write_debug(SessionEvent *request, bool &need_disconnect)
     rc = writer_->writen(debug_info.data(), debug_info.size());
     if (OB_FAIL(rc)) {
       LOG_WARN("failed to send data to client. err=%s", strerror(errno));
-      need_disconnect = true;
-      return RC::IOERR_WRITE;
-    }
-
-    char newline = '\n';
-
-    rc = writer_->writen(&newline, 1);
-    if (OB_FAIL(rc)) {
-      LOG_WARN("failed to send new line to client. err=%s", strerror(errno));
       need_disconnect = true;
       return RC::IOERR_WRITE;
     }
