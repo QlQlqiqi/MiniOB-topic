@@ -219,6 +219,8 @@ struct AttrInfoSqlNode
   std::string name;    ///< Attribute name
   size_t      length;  ///< Length of attribute
   bool        nullable;///< can be set null if true (default: true)
+  bool        high_vector;  ///< is high dim vector
+  size_t      dim;  ///< number of vector's dim
 };
 
 /**

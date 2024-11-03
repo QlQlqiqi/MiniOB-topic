@@ -76,7 +76,21 @@
         "thread": "cpp",
         "typeinfo": "cpp",
         "variant": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "barrier": "cpp",
+        "cfenv": "cpp",
+        "coroutine": "cpp",
+        "csetjmp": "cpp",
+        "csignal": "cpp",
+        "cuchar": "cpp",
+        "source_location": "cpp",
+        "future": "cpp",
+        "latch": "cpp",
+        "ranges": "cpp",
+        "scoped_allocator": "cpp",
+        "syncstream": "cpp",
+        "typeindex": "cpp",
+        "valarray": "cpp"
     },
     "cmake.debugConfig": {
         "args": ["-f", "../etc/observer.ini", "-P", "cli"]

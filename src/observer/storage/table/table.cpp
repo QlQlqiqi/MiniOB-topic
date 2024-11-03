@@ -348,7 +348,8 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
   for (int i = 0; i < value_num && OB_SUCC(rc); i++) {
     const FieldMeta *field = table_meta_.field(i + normal_field_start_index);
     const Value &    value = values[i];
-      // text 和 char 不需要转化
+    // text 和 char 不需要转化
+    // 高纬度 vector 与 text 类似
     if (field->type() != value.attr_type() &&
         !(field->type() == AttrType::TEXTS && value.attr_type() == AttrType::CHARS)) {
       Value real_value;
@@ -378,7 +379,7 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
   bool is_null = false;
   // 如果这个数据是 null，那么 field 必须为 nullable。
   if (value.is_null()) {
-    if(!field->nullable()) {
+    if (!field->nullable()) {
       LOG_WARN("failed to insert null record in not null field, field name:%s", field->name());
       return RC::UNSUPPORTED;
     }
@@ -386,16 +387,25 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
   }
 
   // 如果是 vector，那么其 length 应该与 field 的相同，null 则不考
+  // 高维 vector 则特殊处理
   if (!is_null) {
     if (field->type() == AttrType::VECTORS) {
-      if (field->len() - field->nullable() != value.length()) {
-        LOG_WARN("field's length %d should be the same as value's %d", field->len() - field->nullable(),value.length());
-        return RC::UNSUPPORTED;
+      if (field->high_vector()) {
+        ASSERT(field->len() == field->nullable() + sizeof(uint64_t) + sizeof(int), "error high vector length");
+        if (field->dim() * sizeof(double) != value.length()) {
+          LOG_WARN("high field's length %d should be the same as value's %d", field->dim() * sizeof(double), value.length());
+          return RC::INVALID_ARGUMENT;
+        }
+      } else {
+        if (field->len() - field->nullable() != value.length()) {
+          LOG_WARN("field's length %d should be the same as value's %d", field->len() - field->nullable(), value.length());
+          return RC::INVALID_ARGUMENT;
+        }
       }
     }
   }
 
-  size_t       copy_len = field->len();
+  size_t    copy_len = field->len();
   const int data_len = value.length();
   if (field->type() == AttrType::CHARS || field->type() == AttrType::VECTORS) {
     if (copy_len > data_len) {
@@ -408,7 +418,7 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
   // 如果可以为 null，必须先写 sizeof(field->nullable()) 个字节，代表是否为 null
   memcpy(record_data, &is_null, sizeof(is_null));
   record_data += field->nullable();
-  
+
   // TODO(qiqi): 对于 text，我们需要将具体的数据存放在溢出页中，然后将其位置存在 record 中，
   // 本应在外面控制向溢出页写的逻辑，以便 rollback 等操作，但是在这里写便于代码的编写，
   // 所以暂不考虑其他
@@ -420,7 +430,19 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
         LOG_WARN("failed to write text into text_buffer_pool_");
         return rc;
       }
-    } else {
+    } else if(field->high_vector()) {
+      // high vector 将 char 或 vector 类型数据转为 vector，
+      // 然后存入 text 溢出页
+      auto tmp = value;
+      if (value.attr_type() != AttrType::VECTORS) {
+        value.cast_to(value, AttrType ::VECTORS, tmp);
+      }
+      RC rc = set_text_and_store_record(tmp.data(), tmp.length(), record_data);
+      if (OB_FAIL(rc)) {
+        LOG_WARN("failed to write text into text_buffer_pool_");
+        return rc;
+      }
+    }else {
       memcpy(record_data, value.data(), value.length());
     }
   }
@@ -467,7 +489,7 @@ RC Table::init_text_bp(const char *base_dir)
   return rc;
 }
 
-RC Table::get_text_from_record(const char* record, Value &result) const
+RC Table::get_text_from_record(const char* record, Value &result, const bool high_vector) const
 {
   uint64_t off  = *(uint64_t *)record;
   int      len  = *(int *)(record + sizeof(uint64_t));
@@ -477,7 +499,7 @@ RC Table::get_text_from_record(const char* record, Value &result) const
     LOG_WARN("Failed to read text rc=%s", strrc(rc));
     return rc;
   }
-  result.set_type(AttrType::CHARS);
+  result.set_type(high_vector ? AttrType::VECTORS : AttrType::CHARS);
   // 如果是 0，可以特判
   if (len == 0) {
     result.set_data("", len);

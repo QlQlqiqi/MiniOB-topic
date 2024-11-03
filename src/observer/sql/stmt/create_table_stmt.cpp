@@ -13,6 +13,7 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "common/log/log.h"
+#include "common/type/vector_type.h"
 #include "common/types.h"
 #include "sql/stmt/create_table_stmt.h"
 #include "event/sql_debug.h"
@@ -27,6 +28,15 @@ RC CreateTableStmt::create(Db *db, const CreateTableSqlNode &create_table, Stmt 
   }
   if (storage_format == StorageFormat::UNKNOWN_FORMAT) {
     return RC::INVALID_ARGUMENT;
+  }
+  // vector 的维度不得过高
+  for (auto &attr : create_table.attr_infos) {
+    if (attr.type == AttrType::VECTORS) {
+      if (attr.dim > VECTOR_MAX_SIZE) {
+        LOG_WARN("dont support too high dim for vector: %d", attr.dim);
+        return RC::INVALID_ARGUMENT;
+      }
+    }
   }
   stmt = new CreateTableStmt(create_table.relation_name, create_table.attr_infos, storage_format);
   sql_debug("create table statement: table name %s", create_table.relation_name.c_str());
