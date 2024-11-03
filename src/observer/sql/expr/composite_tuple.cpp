@@ -14,6 +14,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/expr/composite_tuple.h"
 #include "common/log/log.h"
+#include "composite_tuple.h"
 
 using namespace std;
 
@@ -62,6 +63,16 @@ RC CompositeTuple::find_cell(const TupleCellSpec &spec, Value &cell) const
   return rc;
 }
 
+RC CompositeTuple::get_rids(std::map<Table*, RID> &rid_map) const {
+  RC rc = RC::SUCCESS;
+  for(size_t i = 0; i < tuples_.size(); i++){
+    ASSERT(tuples_[i] != nullptr, "the tuple should not be nullptr");
+    if((rc = tuples_[i]->get_rids(rid_map)) != RC::SUCCESS){
+      return rc;
+    }
+  }
+  return RC::SUCCESS; 
+}
 void CompositeTuple::add_tuple(unique_ptr<Tuple> tuple) { tuples_.push_back(std::move(tuple)); }
 
 Tuple &CompositeTuple::tuple_at(size_t index) 

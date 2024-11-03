@@ -96,6 +96,14 @@ public:
    */
   virtual RC find_cell(const TupleCellSpec &spec, Value &cell) const = 0;
 
+  /**
+   * @brief Get the rids object, 因为一个 Tuple 可对应多个表的 Record，所以可能传回多个
+   * 
+   * @param rid_map 
+   * @return RC 
+   */
+  virtual RC get_rids(std::map<Table*, RID> &rid_map) const = 0;
+
 
   /**
    * 深拷贝方法
@@ -257,6 +265,11 @@ public:
     return clone_;
   }
 
+  RC get_rids(std::map<Table*, RID> &rid_map) const override{
+    rid_map[const_cast<Table*>(table_)] = record_->rid();
+    return RC::SUCCESS;
+  }
+
 
 #if 0
   RC cell_spec_at(int index, const TupleCellSpec *&spec) const override
@@ -278,6 +291,23 @@ private:
   Record                  *record_ = nullptr;
   const Table             *table_  = nullptr;
   std::vector<FieldExpr *> speces_;
+};
+
+class ViewRowTuple : public RowTuple
+{
+  private:
+    std::map<Table*, RID> rid_maps_;
+  public:
+    const std::map<Table*, RID> &get_rid_maps() const{return rid_maps_;}
+    std::map<Table*, RID> &get_rid_maps() {return rid_maps_;}
+    void set_rid_maps(std::map<Table*, RID> &&rid_maps){
+      this->rid_maps_ = std::move(rid_maps);
+    }
+
+    RC set_rid_maps(Tuple *tuple){
+      ASSERT(tuple != nullptr, "the tuple should not be null");
+      return tuple->get_rids(this->rid_maps_);
+    }
 };
 
 /**
@@ -327,6 +357,11 @@ public:
 
   std::unique_ptr<Tuple> clone() const override{
     return nullptr;
+  }
+
+  RC get_rids(std::map<Table*, RID> &rid_map) const override{
+    ASSERT(tuple_ != nullptr, "the tuple should not be nullptr");
+    return tuple_->get_rids(rid_map);
   }
 
 
@@ -421,6 +456,10 @@ public:
     return RC::SUCCESS;
   }
 
+  RC get_rids(std::map<Table*, RID> &rid_map) const override{
+    return RC::UNSUPPORTED;
+  }
+
 private:
   std::vector<Value>         cells_;
   std::vector<TupleCellSpec> specs_;
@@ -486,6 +525,16 @@ public:
     clone_->set_left(this->left_->clone().release());
     clone_->set_right(this->right_->clone().release());
     return clone_;
+  }
+
+  RC get_rids(std::map<Table*, RID> &rid_map) const override{
+    ASSERT(left_ != nullptr && right_ != nullptr, "left should not be null");
+    RC rc = RC::SUCCESS;
+    rc = left_->get_rids(rid_map);
+    if(OB_FAIL(rc)){
+      return rc;
+    }
+    return right_->get_rids(rid_map);
   }
 
 

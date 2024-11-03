@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "common/rc.h"
 #include "common/type/attr_type.h"
+#include "common/types.h"
 
 class Stmt;
 class CalcStmt;
@@ -36,10 +37,11 @@ public:
   virtual ~LogicalPlanGenerator() = default;
 
   static RC create(Stmt *stmt, std::unique_ptr<LogicalOperator> &logical_operator);
+  static RC create_view_scan_plan(SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator, ReadWriteMode read_write_mode);
 
 private:
   static RC create_plan(CalcStmt *calc_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
-  static RC create_plan(SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
+  static RC create_plan(SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator, ReadWriteMode read_write_mode = ReadWriteMode::READ_ONLY);
   static RC create_plan(FilterStmt *filter_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   static RC create_plan(InsertStmt *insert_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   static RC create_plan(UpdateStmt *insert_stmt, std::unique_ptr<LogicalOperator> &logical_operator);

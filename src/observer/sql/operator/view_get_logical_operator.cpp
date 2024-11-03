@@ -20,7 +20,7 @@ ViewGetLogicalOperator::ViewGetLogicalOperator(View *view, ReadWriteMode mode)
 {
   ASSERT(view_->generate_select_stmt() == RC::SUCCESS, "the select generate failed");
   ASSERT(view_->select_stmt() != nullptr, "the select statment should not be null");
-  LogicalPlanGenerator::create(view->select_stmt().get(), select_logical_operator_);
+  LogicalPlanGenerator::create_view_scan_plan(view->select_stmt().get(), select_logical_operator_, mode_);
   ASSERT(view_->select_stmt() != nullptr, "the select statment should not be null after generator");
   ASSERT(select_logical_operator_ != nullptr, "the logica operator should not be null");
 }

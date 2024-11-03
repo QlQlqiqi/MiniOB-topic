@@ -50,6 +50,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/table_scan_vec_physical_operator.h"
 #include "sql/operator/view_get_logical_operator.h"
 #include "sql/operator/view_scan_physical_operator.h"
+#include "sql/operator/view_update_physical_operator.h"
 #include "sql/optimizer/physical_plan_generator.h"
 #include "storage/index/index.h"
 #include "physical_plan_generator.h"
@@ -319,7 +320,11 @@ RC PhysicalPlanGenerator::create_plan(UpdateLogicalOperator &update_oper, unique
     }
   }
 
-  oper.reset(new UpdatePhysicalOperator(table, values));
+  if(table->type() == TableType::TABLE){//table
+    oper.reset(new UpdatePhysicalOperator(table, values));
+  }else{//view
+    oper.reset(new ViewUpdatePhysicalOperator(static_cast<View*>(table), values));
+  }
 
   if (child_physical_oper) {
     oper->add_child(std::move(child_physical_oper));
@@ -470,8 +475,7 @@ RC PhysicalPlanGenerator::create_plan(ViewGetLogicalOperator &logical_oper, std:
     return rc;
   }
 
-  auto is_read = view->view_meta().read_only()? ReadWriteMode::READ_ONLY: ReadWriteMode::READ_WRITE;
-  unique_ptr<ViewScanPhysicalOperator> view_scan_oper = make_unique<ViewScanPhysicalOperator>(view, is_read);
+  unique_ptr<ViewScanPhysicalOperator> view_scan_oper = make_unique<ViewScanPhysicalOperator>(view, logical_oper.read_write_mode());
   view_scan_oper->add_child(std::move(select_physical_oper));
   oper = std::move(view_scan_oper);
   return RC::SUCCESS;

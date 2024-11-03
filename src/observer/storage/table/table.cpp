@@ -266,7 +266,7 @@ RC Table::visit_record(const RID &rid, function<bool(Record &)> visitor)
   return record_handler_->visit_record(rid, visitor);
 }
 
-RC Table::get_record(const RID &rid, Record &record)
+RC Table::get_record(const RID &rid, Record &record) const
 {
   RC rc = record_handler_->get_record(rid, record);
   if (rc != RC::SUCCESS) {

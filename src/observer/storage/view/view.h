@@ -57,7 +57,9 @@ public:
   const std::unique_ptr<SelectStmt> &select_stmt() const{ return select_stmt_; }
   const ViewMeta                    &view_meta() const{ return view_meta_; }
   const TableMeta                   &table_meta() const{return table_meta_;}
+  const std::vector<std::unique_ptr<Field>> &origin_fields() const { return origin_fields_; }
   virtual TableType                  type() const { return TableType::VIEW; }
+  std::vector<std::unique_ptr<Field>> &origin_fields() { return origin_fields_; }
   // void init_table_meta();
   std::unique_ptr<SelectStmt> &select_stmt() { return select_stmt_; }
 

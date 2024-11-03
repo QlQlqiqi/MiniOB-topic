@@ -37,8 +37,8 @@ RC ViewScanPhysicalOperator::next()
   ASSERT(static_cast<int>(field_metas.size()) == project_tuple->cell_num(), "the field meta size should be equal to project tuple cell num");
   Record view_record;
   vector<Value> values;
-  for (int i = 0; i < project_tuple->cell_num(); i++) {
 
+  for (int i = 0; i < project_tuple->cell_num(); i++) {
     Value val;
     rc     = project_tuple->cell_at(i, val);
     values.emplace_back(val);
@@ -72,6 +72,7 @@ RC ViewScanPhysicalOperator::next()
   }
   view_->make_record(project_tuple->cell_num(), values.data(), current_record_);
   tuple_.set_record(&current_record_);
+  tuple_.set_rid_maps(project_tuple);
   return rc;
 }
 

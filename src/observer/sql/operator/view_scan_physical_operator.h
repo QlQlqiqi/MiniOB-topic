@@ -35,6 +35,6 @@ private:
   ReadWriteMode                            mode_  = ReadWriteMode::READ_WRITE;
   RecordFileScanner                        record_scanner_;
   Record                                   current_record_;
-  RowTuple                                 tuple_;
+  ViewRowTuple                             tuple_;
   std::vector<std::unique_ptr<Expression>> predicates_;  // TODO chang predicate to view tuple filter
 };

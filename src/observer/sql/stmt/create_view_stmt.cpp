@@ -91,8 +91,8 @@ RC CreateViewStmt::create(Db *db, const CreateViewSqlNode &create_view, Stmt *&s
       } break;
       default:{
         LOG_WARN("invalid argument. expression type is not supported");
-        return RC::INVALID_ARGUMENT;
-      }
+        origin_fields.push_back(nullptr);
+      }break;
     }
 
     // auto field_meta = FieldMeta(attr_info.name.c_str(), attr_info.type, offset++, attr_info.length,true, field_id++, attr_info.nullable);
@@ -100,7 +100,7 @@ RC CreateViewStmt::create(Db *db, const CreateViewSqlNode &create_view, Stmt *&s
   }
   
   create_view_stmt->is_insertable_ = !has_exprssion && is_single_table;
-  create_view_stmt->is_updateable_ = !has_exprssion && is_single_table;
+  create_view_stmt->is_updatable_ = !has_exprssion;
   stmt = create_view_stmt;
   return RC::SUCCESS;
 }

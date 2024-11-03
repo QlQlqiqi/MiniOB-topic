@@ -41,6 +41,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/stmt.h"
 
 #include "sql/expr/expression_iterator.h"
+#include "logical_plan_generator.h"
 
 using namespace std;
 using namespace common;
@@ -91,13 +92,18 @@ RC LogicalPlanGenerator::create(Stmt *stmt, unique_ptr<LogicalOperator> &logical
   return rc;
 }
 
+RC LogicalPlanGenerator::create_view_scan_plan(
+    SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator, ReadWriteMode read_write_mode)
+{
+  return create_plan(select_stmt, logical_operator, read_write_mode);
+}
 RC LogicalPlanGenerator::create_plan(CalcStmt *calc_stmt, std::unique_ptr<LogicalOperator> &logical_operator)
 {
   logical_operator.reset(new CalcLogicalOperator(std::move(calc_stmt->expressions())));
   return RC::SUCCESS;
 }
 
-RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<LogicalOperator> &logical_operator)
+RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<LogicalOperator> &logical_operator, ReadWriteMode read_write_mode)
 {
   RC rc = RC::SUCCESS;
   unique_ptr<LogicalOperator> *last_oper = nullptr;
@@ -114,10 +120,10 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
 
     switch(table->type()){
       case TableType::TABLE:{
-        table_get_oper.reset(new TableGetLogicalOperator(table, ReadWriteMode::READ_ONLY));
+        table_get_oper.reset(new TableGetLogicalOperator(table, read_write_mode));
       } break;
       case TableType::VIEW:{
-        table_get_oper.reset(new ViewGetLogicalOperator(static_cast<View*>(table), ReadWriteMode::READ_ONLY));
+        table_get_oper.reset(new ViewGetLogicalOperator(static_cast<View*>(table), read_write_mode));
       } break;
       default:{
         ASSERT(false, "unknown table type");
@@ -268,6 +274,34 @@ RC LogicalPlanGenerator::create_plan(InsertStmt *insert_stmt, unique_ptr<Logical
   Table        *table = insert_stmt->table();
   vector<Value> values(insert_stmt->values(), insert_stmt->values() + insert_stmt->value_amount());
 
+  if(table->type() == TableType::VIEW)
+  {
+    LOG_WARN("InsertLogicalOperator: table type is VIEW");
+    View *view = static_cast<View*>(table);
+    if(!view->view_meta().is_insertable()){
+        LOG_WARN("this view cannot be inserted");
+        return RC::UNSUPPORTED;
+    }
+    ASSERT(view->select_stmt()->tables().size() == 1, "view should have only one table");
+    Table* origin_table = const_cast<Table*>(view->origin_fields()[0]->table());
+    auto field_num = origin_table->table_meta().field_num();
+    vector<Value> view_insert_values;
+    view_insert_values.resize(field_num);
+    for_each(view_insert_values.begin(), view_insert_values.end(), [&](Value &v){
+      v.set_null();
+    });
+    auto &origin_fields = view->origin_fields(); 
+    ASSERT(origin_fields.size() == values.size(), "values size should be equal to origin fields size");
+    for(size_t i = 0; i < origin_fields.size(); i++){
+      auto &field =  origin_fields[i];
+      ASSERT(field != nullptr, "field should not be nullptr");
+      auto field_id = field->meta()->field_id();
+      view_insert_values[field_id] = values[i];
+    }
+
+    values = std::move(view_insert_values); 
+    table = origin_table;
+  }
   InsertLogicalOperator *insert_operator = new InsertLogicalOperator(table, values);
   logical_operator.reset(insert_operator);
   return RC::SUCCESS;
@@ -279,7 +313,15 @@ RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<Logical
   std::vector<std::pair<FieldMeta, Value>> values(update_stmt->values());
 
   FilterStmt                 *filter_stmt = update_stmt->filter_stmt();
-  unique_ptr<LogicalOperator> table_get_oper(new TableGetLogicalOperator(table, ReadWriteMode::READ_WRITE));
+  unique_ptr<LogicalOperator> table_get_oper;
+  if(table->type() == TableType::VIEW){
+    if(!static_cast<View*>(table)->view_meta().is_updateable()){
+      return RC::INVALID_ARGUMENT;
+    }
+    table_get_oper = make_unique<ViewGetLogicalOperator>(static_cast<View*>(table), ReadWriteMode::READ_WRITE);
+  }else{
+    table_get_oper = make_unique<TableGetLogicalOperator>(table, ReadWriteMode::READ_WRITE);
+  }
 
   unique_ptr<LogicalOperator> predicate_oper;
 

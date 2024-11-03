@@ -100,6 +100,8 @@ RC View::create(Db *db, int32_t view_id, const char *view_name, const char *base
     LOG_ERROR("Failed to init view meta. name:%s, ret:%d", view_name, rc);
     return rc;  // delete table file
   }
+  view_meta_.insertable_ = create_view_stmt->is_insertable();
+  view_meta_.updatable_  = create_view_stmt->is_udpatable();
   fstream fs;
   fs.open(view_file_path, ios_base::out | ios_base::binary);
   if (!fs.is_open()) {
@@ -195,8 +197,8 @@ RC View::open(Db *db, const char *view_meta_file, const char* view_table_meta_fi
       } break;
       default:{
         LOG_WARN("invalid argument. expression type is not supported");
-        return RC::INVALID_ARGUMENT;
-      }
+        origin_fields.push_back(nullptr);
+      } break;
     }
   }
 

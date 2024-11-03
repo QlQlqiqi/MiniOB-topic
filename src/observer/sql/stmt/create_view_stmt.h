@@ -49,6 +49,9 @@ public:
   std::unique_ptr<SelectStmt>       &select_stmt() { return select_stmt_; }
   const std::string                 &select_sql() const { return select_sql_; }
 
+  bool                              is_insertable() const{return is_insertable_;}
+  bool                              is_udpatable() const{return is_updatable_;}
+
   std::vector<std::unique_ptr<Field>>      &origin_fields(){ return origin_fields_; }
 
   static RC create(Db *db, const CreateViewSqlNode &create_view, Stmt *&stmt);
@@ -62,5 +65,5 @@ private:
   std::string                 select_sql_;
 
   bool is_insertable_;
-  bool is_updateable_;
+  bool is_updatable_;
 };
