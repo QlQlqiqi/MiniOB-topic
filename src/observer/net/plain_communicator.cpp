@@ -39,7 +39,8 @@ RC PlainCommunicator::read_event(SessionEvent *&event)
   int data_len = 0;
   int read_len = 0;
 
-  const int    max_packet_size = 8192;
+  // text 最多 65535
+  const int    max_packet_size = 338192;
   vector<char> buf(max_packet_size);
 
   // 持续接收消息，直到遇到'\0'。将'\0'遇到的后续数据直接丢弃没有处理，因为目前仅支持一收一发的模式
@@ -74,6 +75,11 @@ RC PlainCommunicator::read_event(SessionEvent *&event)
     }
 
     data_len += read_len;
+    // 不能超量读取
+    if(data_len >= max_packet_size) {
+      data_len = max_packet_size + 1;
+      break;
+    }
   }
 
   if (data_len > max_packet_size) {
