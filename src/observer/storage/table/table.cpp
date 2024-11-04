@@ -449,7 +449,7 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
         LOG_WARN("failed to write text into text_buffer_pool_");
         return rc;
       }
-    }else {
+    } else {
       memcpy(record_data, value.data(), value.length());
     }
   }

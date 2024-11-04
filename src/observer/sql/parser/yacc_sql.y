@@ -161,7 +161,6 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         AVG
         MAX
         MIN
-        AS
         L2_DISTANCE
         COSINE_DISTANCE
         INNER_PRODUCT

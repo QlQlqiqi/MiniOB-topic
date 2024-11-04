@@ -123,7 +123,6 @@ PROBES                                  RETURN_TOKEN(PROBES_T);
 TEXT                                    RETURN_TOKEN(TEXT_T);
 DATE                                    RETURN_TOKEN(DATE_T);
 LOAD                                    RETURN_TOKEN(LOAD);
-DATA                                    RETURN_TOKEN(DATA);
 INFILE                                  RETURN_TOKEN(INFILE);
 EXPLAIN                                 RETURN_TOKEN(EXPLAIN);
 IS                                      RETURN_TOKEN(IS);
@@ -155,6 +154,7 @@ IN                                      RETURN_TOKEN(IN);
 AS                                      RETURN_TOKEN(AS);
 EXISTS                                  RETURN_TOKEN(EXISTS);
 {ID}                                    yylval->string=strdup(yytext); RETURN_TOKEN(ID);
+DATA                                    RETURN_TOKEN(DATA);
 "("                                     RETURN_TOKEN(LBRACE);
 ")"                                     RETURN_TOKEN(RBRACE);
 

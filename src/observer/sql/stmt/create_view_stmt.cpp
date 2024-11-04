@@ -69,10 +69,11 @@ RC CreateViewStmt::create(Db *db, const CreateViewSqlNode &create_view, Stmt *&s
     Expression* expression = expr.get();
 
     attr_info.type = expression->value_type();
-    attr_info.name = create_view.attr_ids.empty() ? expression->name() : create_view.attr_ids[offset];
+    attr_info.name = create_view.attr_ids.empty() ? (expression->has_alias()?expression->alias() :expression->name()) : create_view.attr_ids[offset];
     attr_info.nullable = expression->value_nullable();       
     //如果为nullable ，应该多一个字节，标识是否为空 
-    attr_info.length = attr_info.nullable ? expression->value_length() + 1: expression->value_length();
+    // attr_info.length = attr_info.nullable ? expression->value_length() + 1: expression->value_length();
+    attr_info.length = expression->value_length();
 
     switch(expr->type()){
       case ExprType::ARITHMETIC:
@@ -97,6 +98,7 @@ RC CreateViewStmt::create(Db *db, const CreateViewSqlNode &create_view, Stmt *&s
 
     // auto field_meta = FieldMeta(attr_info.name.c_str(), attr_info.type, offset++, attr_info.length,true, field_id++, attr_info.nullable);
     create_view_stmt->attr_infos_.emplace_back(attr_info);
+    offset++;
   }
   
   create_view_stmt->is_insertable_ = !has_exprssion && is_single_table;

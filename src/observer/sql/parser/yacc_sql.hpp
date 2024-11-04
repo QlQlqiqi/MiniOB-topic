@@ -150,7 +150,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 176 "yacc_sql.y"
+#line 175 "yacc_sql.y"
 
   ParsedSqlNode *                            sql_node;
   Value *                                    value;

@@ -129,6 +129,7 @@ public:
    * @brief 表达式的别名
    */
   virtual const string&  alias() const{return alias_;}
+  virtual const bool     has_alias() const{return !alias_.empty();}
   virtual void        set_alias(std::string alias){alias_ = alias;}
 
   /**
