@@ -28,21 +28,27 @@ public:
     if(table!= nullptr){
         if(table_set_.count(table) == 0){
             query_table_maps_[table->name()] = table;
+            table_full_names_.insert(table->name());
             table_set_.insert(table);
             query_tables_.push_back(table);
         }
     }
   }
 
-  //调用改函数之前必须保证已经调用了 add_table
-  RC add_alias(const std::string& table_name, Table* table){
-    //query_table_map 映射存在，表示有相同别名或者表名已经存在映射
-    if(query_table_maps_.count(table_name) == 0 && table_set_.count(table) != 0){
-      query_table_maps_.insert({table_name, table});
-    }
-    else
+  // 调用前必须保证已经调用了 add_table
+  // 此处也可能传入表全名
+  RC add_alias(const std::string& table_name, Table* table) {
+    if (table_full_names_.contains(table_name))
     {
-      LOG_WARN("zyq: add alias failed.");
+      return RC::SUCCESS;  // 此处不考虑 select * from a b, b a;
+    }
+
+    //query_table_map 映射存在，表示有相同别名或者表名已经存在映射
+    if(!table_aliases_.contains(table_name) && table_set_.contains(table)){
+      query_table_maps_.insert({table_name, table});
+    } else {
+      LOG_WARN("zyq: add alias failed, because %s", table_aliases_.contains(table_name) ? "there have been it." : "we require you call add_table first.");
+
       return RC::INVALID_ARGUMENT;
     }
     return RC::SUCCESS;
@@ -51,12 +57,15 @@ public:
   Table *find_table(const char *table_name) const;
 
   const std::vector<Table *> &query_tables() const { return query_tables_; }
+  const std::unordered_map<std::string, Table*> &query_table_maps() const { return query_table_maps_; }
 
 private:
-  std::vector<Table *> query_tables_;
-  std::set<Table *> table_set_;
-  //记录表名/别名 到 Table* 的映射
-  std::unordered_map<std::string, Table*> query_table_maps_;
+  std::vector<Table *> query_tables_;                        // 有序记录查询涉及的表
+  std::unordered_map<std::string, Table*> query_table_maps_; // 记录表名/别名 到 Table* 的映射
+
+  std::set<Table *>                       table_set_;        // 检查表是否已存在时用
+  std::set<std::string>                   table_full_names_; // 检查表全名是否已存在时用
+  std::set<std::string>                   table_aliases_;    // 检查表别名是否已存在时用
 };
 
 /**
