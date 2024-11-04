@@ -37,7 +37,9 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
     // auto condition_expr = tmp_stmt->expr_.get();
   for (auto [table_name, table]:(*table_map)) {
     binder_context.add_table(table);
-    rc = binder_context.add_alias(table_name, table); //这里传进来的table_map 可能存在别名,所以需要加入映射
+    if(binder_context.find_table(table_name.c_str()) == nullptr){
+      rc = binder_context.add_alias(table_name, table); //这里传进来的table_map 可能存在别名,所以需要加入映射
+    }
     if (OB_FAIL(rc)) { return rc; }
   }
   // collect query fields in `select` statement

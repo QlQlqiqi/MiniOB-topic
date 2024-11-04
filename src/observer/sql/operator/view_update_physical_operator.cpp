@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/update_stmt.h"
 #include "storage/view/view.h"
 #include "storage/trx/trx.h"
+#include "event/sql_debug.h"
 #include <algorithm>
 
 using namespace std;
@@ -88,9 +89,7 @@ RC ViewUpdatePhysicalOperator::open(Trx *trx)
 
     // 1. prepare a record...
     auto &origin_fields = view_->origin_fields();
-    for (auto &item : values_) {
-      auto &field_meta = item.first;
-      auto &v = item.second;
+    for (auto &[field_meta, expr] : values_) {
       //这里 field_id 和 origin_fields index 是一一对应的
       //详细请看 create view 的逻辑
       auto &origin_field = origin_fields[field_meta.field_id()];
@@ -99,31 +98,141 @@ RC ViewUpdatePhysicalOperator::open(Trx *trx)
       auto origin_table = const_cast<Table*>(origin_field->table());
       auto &origin_record = update_records[origin_table];
 
+    // 1. prepare a record...
+      Value v;
+      if (nullptr == view_row_tuple) {
+        return RC::INTERNAL;
+      }
+      RC rc = expr->get_value(*view_row_tuple, v);
+      if (OB_FAIL(rc)) {
+        if (rc == RC::RECORD_EOF) {
+          v.set_null();
+        } else {
+          return rc;
+        }
+      }
+
+      auto match = [](const FieldMeta &f, Value &v) {
+        if (AttrType ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
+          if (f.nullable() && v.attr_type() == AttrType::NULLS) {
+            return RC::SUCCESS;
+          }
+          Value t;
+          if (OB_FAIL(Value::strictly_cast_to(v, ftype, t))) {
+            return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+          }
+          v = t;
+        }
+        return RC::SUCCESS;
+      };
+
+      // 读取 text 内容
+      // if (f.type() == AttrType::TEXTS && !v.is_null()) {
+      //   ASSERT(v.attr_type() == AttrType::CHARS, "value must be chars");
+      //   RC rc = origin_table->get_text_from_record(origin_record.data() + f.offset() + f.nullable(), v);
+      //   if (RC::SUCCESS != rc) {
+      //     LOG_WARN("Failed to read text rc=%s", strrc(rc));
+      //     return rc;
+      //   }
+      // }
+
+      rc = match(*origin_field_meta, v);
+      if (OB_FAIL(rc)) {
+        sql_debug("schema mismatch. field(%s) type: %d, value type: %d",
+          field_meta.name(),
+          static_cast<int>(origin_field_meta->type()),
+          static_cast<int>(v.attr_type()));
+        LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(origin_field_meta->type()), static_cast<int>(v.attr_type()));
+        return rc;
+      }
+
+      if (expr->type() == ExprType::SUBQUERY || expr->type() == ExprType::EXPRLIST)
+      {
+        auto sq_expr    = static_cast<const EnumerableExpr *>(expr.get());
+        if (sq_expr->get_value_with_eof(*view_row_tuple, v) != RC::RECORD_EOF)
+        {
+          LOG_WARN("Expected a scalar expression to update.");
+          return RC::INVALID_ARGUMENT;
+        }
+      }
+
       switch (v.attr_type()) {
         case AttrType::NULLS: {
           assert(origin_field_meta->nullable());
           auto zeros = std::vector<char>(origin_field_meta->len(), '\1');
           rc         = origin_record.set_field(origin_field_meta->offset(), origin_field_meta->len(), zeros.data());
           if (OB_FAIL(rc)) {
-            LOG_WARN("failed to update record. rid=%d, rc=%s", origin_record.rid(), strrc(rc));
+            LOG_WARN("failed to update origin_record. rid=%d, rc=%s", origin_record.rid(), strrc(rc));
             trx->rollback();
             return rc;
           }
         } break;
+        case AttrType::VECTORS: {
+          // high vector 与 text 处理方式类似
+          if (origin_field_meta->high_vector()) {
+            // 检查 high vector dim
+            if (origin_field_meta->dim() * sizeof(double) != v.length()) {
+              LOG_WARN("high field's length %d should be the same as value's %d", origin_field_meta->dim() * sizeof(double), v.length());
+              trx->rollback();
+              return RC::INVALID_ARGUMENT;
+            }
+            // 先置 is_null 标志位为 0
+            origin_record.set_field(origin_field_meta->offset(), 1, "\0");
+            // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
+            RC rc = origin_table->set_text_and_store_record(
+                v.data(), v.length(), origin_record.data() + origin_field_meta->offset() + origin_field_meta->nullable());
+            if (OB_FAIL(rc)) {
+              LOG_WARN("failed to write text into text_buffer_pool_");
+              trx->rollback();
+              return rc;
+            }
+          } else {
+            rc = origin_record.set_field(origin_field_meta->offset() + origin_field_meta->nullable(), v.length(), v.data());
+            if (OB_FAIL(rc)) {
+              LOG_WARN("failed to update origin_record. rid=%d, rc=%s", origin_record.rid(), strrc(rc));
+              trx->rollback();
+              return rc;
+            }
+          }
+        } break;
         case AttrType::CHARS: {
+          // text 不应处理，因为 text 的 value 长度是变长的
+          if (origin_field_meta->type() == AttrType::TEXTS) {
+            // 检查 text 是否超过限制
+            if (v.length() > TEXT_MAX_SIZE) {
+              LOG_WARN("text length is too large: %d", v.length());
+              trx->rollback();
+              return RC::INVALID_ARGUMENT;
+            }
+            // 先置 is_null 标志位为 0
+            origin_record.set_field(origin_field_meta->offset(), 1, "\0");
+            // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
+            RC rc = origin_table->set_text_and_store_record(
+                v.data(), v.length(), origin_record.data() + origin_field_meta->offset() + origin_field_meta->nullable());
+            if (OB_FAIL(rc)) {
+              LOG_WARN("failed to write text into text_buffer_pool_");
+              trx->rollback();
+              return rc;
+            }
+            break;
+          }
           auto zeros = std::vector<char>(origin_field_meta->len(), '\0');
           rc         = origin_record.set_field(origin_field_meta->offset(), origin_field_meta->len(), zeros.data());
           if (OB_FAIL(rc)) {
-            LOG_WARN("failed to update record. rid=%d, rc=%s", origin_record.rid(), strrc(rc));
+            LOG_WARN("failed to update origin_record. rid=%d, rc=%s", origin_record.rid(), strrc(rc));
             trx->rollback();
             return rc;
           }
           [[fallthrough]];
         }
         default: {
-          rc = origin_record.set_field(origin_field_meta->offset() + origin_field_meta->nullable(), v.length() - origin_field_meta->nullable(), v.data());
+          ASSERT((size_t)origin_field_meta->nullable() <= 1, "we assume that casting a bool value to an integer returns either a 0 or an 1.");
+          // 先置 is_null 标志位为 0
+          origin_record.set_field(origin_field_meta->offset(), origin_field_meta->nullable(), "\0");
+          // 然后修改值
+          rc = origin_record.set_field(origin_field_meta->offset() + origin_field_meta->nullable(), v.length(), v.data());
           if (OB_FAIL(rc)) {
-            LOG_WARN("failed to update record. rid=%d, rc=%s", origin_record.rid(), strrc(rc));
+            LOG_WARN("failed to update origin_record. rid=%d, rc=%s", origin_record.rid(), strrc(rc));
             trx->rollback();
             return rc;
           }
