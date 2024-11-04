@@ -44,39 +44,32 @@ RC VectorIndexScanPhysicalOperator::open(Trx *trx)
 
 RC VectorIndexScanPhysicalOperator::next()
 {
-//   RID rid;
+  if (limit_num_ == 0) {
+    return RC::RECORD_EOF;
+  }
+
+  RID rid;
   RC  rc = RC::SUCCESS;
 
-//   bool filter_result = false;
-//   while (RC::SUCCESS == (rc = index_scanner_->next_entry(&rid))) {
-//     rc = record_handler_->get_record(rid, current_record_);
-//     if (OB_FAIL(rc)) {
-//       LOG_TRACE("failed to get record. rid=%s, rc=%s", rid.to_string().c_str(), strrc(rc));
-//       return rc;
-//     }
+  while (RC::SUCCESS == (rc = index_scanner_->next_entry(&rid))) {
+    rc = record_handler_->get_record(rid, current_record_);
+    if (OB_FAIL(rc)) {
+      LOG_TRACE("failed to get record. rid=%s, rc=%s", rid.to_string().c_str(), strrc(rc));
+      return rc;
+    }
 
-//     LOG_TRACE("got a record. rid=%s", rid.to_string().c_str());
+    LOG_TRACE("got a record. rid=%s", rid.to_string().c_str());
 
-//     tuple_.set_record(&current_record_);
-//     rc = filter(tuple_, filter_result);
-//     if (OB_FAIL(rc)) {
-//       LOG_TRACE("failed to filter record. rc=%s", strrc(rc));
-//       return rc;
-//     }
+    tuple_.set_record(&current_record_);
 
-//     if (!filter_result) {
-//       LOG_TRACE("record filtered");
-//       continue;
-//     }
-
-//     rc = trx_->visit_record(table_, current_record_, mode_);
-//     if (rc == RC::RECORD_INVISIBLE) {
-//       LOG_TRACE("record invisible");
-//       continue;
-//     } else {
-//       return rc;
-//     }
-//   }
+    rc = trx_->visit_record(table_, current_record_, mode_);
+    if (rc == RC::RECORD_INVISIBLE) {
+      LOG_TRACE("record invisible");
+      continue;
+    }
+    limit_num_--;
+    return rc;
+  }
 
   return rc;
 }
