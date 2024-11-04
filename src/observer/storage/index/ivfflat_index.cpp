@@ -61,7 +61,10 @@ RC IvfflatIndex::open(
   return RC::SUCCESS;
 };
 
-vector<RID> IvfflatIndex::ann_search(const vector<float> &base_vector, size_t limit) { return vector<RID>(); }
+vector<RID> IvfflatIndex::ann_search(const vector<float> &base_vector, size_t limit)
+{
+  ASSERT(false, "unimplement ann search");
+}
 
 RC IvfflatIndex::close()
 {
