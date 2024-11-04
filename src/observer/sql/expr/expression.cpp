@@ -50,7 +50,11 @@ static bool str_like(const Value &left, const Value &right)
 
 RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
 {
-  return tuple.find_cell(TupleCellSpec(table_name(), field_name()), value);
+  RC rc = tuple.find_cell(TupleCellSpec(table_name(), field_name()), value);
+  if (rc == RC::NOTFOUND && g_table_tuple_map.contains(table_name())) {
+    return g_table_tuple_map.at(table_name())->find_cell(TupleCellSpec(table_name(), field_name()), value);
+  }
+  return rc;
 }
 
 bool FieldExpr::equal(const Expression &other) const

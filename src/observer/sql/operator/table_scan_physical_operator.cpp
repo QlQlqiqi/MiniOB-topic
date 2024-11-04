@@ -37,6 +37,8 @@ RC TableScanPhysicalOperator::next()
     LOG_TRACE("got a record. rid=%s", current_record_.rid().to_string().c_str());
     
     tuple_.set_record(&current_record_);
+    g_table_tuple_map[table_->name()] = tuple_.clone();
+
     rc = filter(tuple_, filter_result);
     if (rc != RC::SUCCESS) {
       LOG_TRACE("record filtered failed=%s", strrc(rc));
@@ -53,7 +55,10 @@ RC TableScanPhysicalOperator::next()
   return rc;
 }
 
-RC TableScanPhysicalOperator::close() { return record_scanner_.close_scan(); }
+RC TableScanPhysicalOperator::close() {
+   g_table_tuple_map.erase(table_->name());
+   return record_scanner_.close_scan();
+}
 
 Tuple *TableScanPhysicalOperator::current_tuple()
 {
