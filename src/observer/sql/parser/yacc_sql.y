@@ -880,12 +880,18 @@ rel_attr:
       $$->attribute_name = $1;
       free($1);
     }
-    | ID DOT ID{
+    | ID DOT ID {
       $$ = new RelAttrSqlNode;
       $$->relation_name  = $1;
       $$->attribute_name = $3;
       free($1);
       free($3);
+    }
+    | ID DOT '*' {
+      $$ = new RelAttrSqlNode;
+      $$->relation_name  = $1;
+      $$->attribute_name = "*";
+      free($1);
     }
     ;
 
