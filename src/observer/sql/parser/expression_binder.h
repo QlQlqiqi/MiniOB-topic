@@ -46,6 +46,7 @@ public:
     //query_table_map 映射存在，表示有相同别名或者表名已经存在映射
     if(!table_aliases_.contains(table_name) && table_set_.contains(table)){
       query_table_maps_.insert({table_name, table});
+      table_aliases_.insert(table_name);
     } else {
       LOG_WARN("zyq: add alias failed, because %s", table_aliases_.contains(table_name) ? "there have been it." : "we require you call add_table first.");
 
