@@ -27,6 +27,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/common/meta_util.h"
 #include "storage/index/bplus_tree_index.h"
 #include "storage/index/index.h"
+#include "storage/index/ivfflat_index.h"
 #include "storage/record/record_manager.h"
 #include "storage/table/table.h"
 #include "storage/trx/trx.h"
@@ -234,7 +235,12 @@ RC Table::open(Db *db, const char *meta_file, const char *base_dir)
       field_metas.emplace_back(field_meta);
     }
 
-    BplusTreeIndex *index      = new BplusTreeIndex();
+    Index *index = nullptr;
+    if (index_meta->is_ivfflat()) {
+      index = new IvfflatIndex();
+    } else {
+      index = new BplusTreeIndex();
+    }
     string          index_file = table_index_file(base_dir, name(), index_meta->name());
 
     rc = index->open(this, index_file.c_str(), *index_meta, field_metas);
@@ -544,7 +550,8 @@ RC Table::get_chunk_scanner(ChunkFileScanner &scanner, Trx *trx, ReadWriteMode m
   return rc;
 }
 
-RC Table::create_index(Trx *trx, const std::vector<const FieldMeta*> &field_metas, const char *index_name, const bool unique)
+RC Table::create_index(Trx *trx, const std::vector<const FieldMeta *> &field_metas, const char *index_name,
+    const bool unique, const std::unique_ptr<VectorIndexWith> &with)
 {
   if (common::is_blank(index_name) || field_metas.empty()) {
     LOG_INFO("Invalid input arguments, table name is %s, index_name is blank or attribute_name is blank", name());
@@ -553,7 +560,7 @@ RC Table::create_index(Trx *trx, const std::vector<const FieldMeta*> &field_meta
 
   IndexMeta new_index_meta;
 
-  RC rc = new_index_meta.init(index_name, field_metas, unique);
+  RC rc = new_index_meta.init(index_name, field_metas, unique, with);
   if (rc != RC::SUCCESS) {
     std::string field_names = field_metas[0]->name();
     for (int i = 0; i < static_cast<int>(field_metas.size()); i++) {
@@ -586,10 +593,15 @@ RC Table::create_index(Trx *trx, const std::vector<const FieldMeta*> &field_meta
   }
 
   // 创建索引相关数据
-  BplusTreeIndex *index      = new BplusTreeIndex();
-  string          index_file = table_index_file(base_dir_.c_str(), name(), index_name);
+  Index *index = nullptr;
+  if (with) {
+    index = new IvfflatIndex();
+  } else {
+    index = new BplusTreeIndex();
+  }
+  string index_file = table_index_file(base_dir_.c_str(), name(), index_name);
 
-  rc = index->create(this, index_file.c_str(), new_index_meta, field_ids, field_metas, unique);
+  rc = index->create(this, index_file.c_str(), new_index_meta, field_ids, field_metas);
   if (rc != RC::SUCCESS) {
     delete index;
     LOG_ERROR("Failed to create bplus tree index. file name=%s, rc=%d:%s", index_file.c_str(), rc, strrc(rc));

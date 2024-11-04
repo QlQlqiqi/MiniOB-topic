@@ -38,6 +38,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/predicate_physical_operator.h"
 #include "sql/operator/project_logical_operator.h"
 #include "sql/operator/project_physical_operator.h"
+#include "sql/operator/limit_logical_operator.h"
+#include "sql/operator/limit_physical_operator.h"
 #include "sql/operator/project_vec_physical_operator.h"
 #include "sql/operator/table_get_logical_operator.h"
 #include "sql/operator/table_scan_physical_operator.h"
@@ -48,6 +50,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/hash_group_by_physical_operator.h"
 #include "sql/operator/scalar_group_by_physical_operator.h"
 #include "sql/operator/table_scan_vec_physical_operator.h"
+#include "sql/operator/vector_index_scan_logical_operator.h"
+#include "sql/operator/vector_index_scan_physical_operator.h"
 #include "sql/optimizer/physical_plan_generator.h"
 #include "storage/index/index.h"
 
@@ -99,6 +103,12 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
     } break;
     case LogicalOperatorType::ORDER_BY: {
       return create_plan(static_cast<OrderByLogicalOperator &>(logical_operator), oper);
+    } break;
+    case LogicalOperatorType::LIMIT: {
+      return create_plan(static_cast<LimitLogicalOperator &>(logical_operator), oper);
+    } break;
+    case LogicalOperatorType::VECTOR_INDEX_SCAN: {
+      return create_plan(static_cast<VectorIndexScanLogicalOperator &>(logical_operator), oper);
     } break;
 
     default: {
@@ -275,6 +285,66 @@ RC PhysicalPlanGenerator::create_plan(ProjectLogicalOperator &project_oper, uniq
   oper = std::move(project_operator);
 
   LOG_TRACE("create a project physical operator");
+  return rc;
+}
+
+RC PhysicalPlanGenerator::create_plan(VectorIndexScanLogicalOperator &vector_index_scan_oper, unique_ptr<PhysicalOperator> &oper)
+{
+  vector<unique_ptr<LogicalOperator>> &child_opers = vector_index_scan_oper.children();
+
+  unique_ptr<PhysicalOperator> child_phy_oper;
+
+  RC rc = RC::SUCCESS;
+  if (!child_opers.empty()) {
+    LogicalOperator *child_oper = child_opers.front().get();
+
+    rc = create(*child_oper, child_phy_oper);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to create vector index scan logical operator's child physical operator. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+
+  auto vec_operator = std::make_unique<VectorIndexScanPhysicalOperator>(vector_index_scan_oper.table(),
+      vector_index_scan_oper.index(),
+      vector_index_scan_oper.field_meta().get(),
+      vector_index_scan_oper.order_op(),
+      vector_index_scan_oper.limit_num());
+  if (child_phy_oper) {
+    vec_operator->add_child(std::move(child_phy_oper));
+  }
+
+  oper = std::move(vec_operator);
+
+  LOG_TRACE("create a vector index scan physical operator");
+  return rc;
+}
+
+RC PhysicalPlanGenerator::create_plan(LimitLogicalOperator &limit_oper, unique_ptr<PhysicalOperator> &oper)
+{
+  vector<unique_ptr<LogicalOperator>> &child_opers = limit_oper.children();
+
+  unique_ptr<PhysicalOperator> child_phy_oper;
+
+  RC rc = RC::SUCCESS;
+  if (!child_opers.empty()) {
+    LogicalOperator *child_oper = child_opers.front().get();
+
+    rc = create(*child_oper, child_phy_oper);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to create limit logical operator's child physical operator. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+
+  auto limit_operator = make_unique<LimitPhysicalOperator>(limit_oper.num_);
+  if (child_phy_oper) {
+    limit_operator->add_child(std::move(child_phy_oper));
+  }
+
+  oper = std::move(limit_operator);
+
+  LOG_TRACE("create a limit physical operator");
   return rc;
 }
 

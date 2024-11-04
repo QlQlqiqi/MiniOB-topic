@@ -91,7 +91,8 @@ public:
   RC recover_insert_record(Record &record);
 
   // TODO refactor
-  RC create_index(Trx *trx, const std::vector<const FieldMeta*> &field_metas, const char *index_name, const bool unique);
+  RC create_index(Trx *trx, const std::vector<const FieldMeta *> &field_metas, const char *index_name,
+      const bool unique, const std::unique_ptr<VectorIndexWith> &with = nullptr);
 
   RC get_record_scanner(RecordFileScanner &scanner, Trx *trx, ReadWriteMode mode);
 
@@ -107,6 +108,8 @@ public:
    * @return RC
    */
   RC visit_record(const RID &rid, function<bool(Record &)> visitor);
+
+  const vector<Index *> &indexes() const { return indexes_; }
 
 public:
   int32_t     table_id() const { return table_meta_.table_id(); }

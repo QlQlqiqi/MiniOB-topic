@@ -34,6 +34,7 @@ enum class LogicalOperatorType
 {
   CALC,
   TABLE_GET,   ///< 从表中获取数据
+  VECTOR_INDEX_SCAN,   ///< 从表中获取数据
   PREDICATE,   ///< 过滤，就是谓词
   PROJECTION,  ///< 投影，就是select
   JOIN,        ///< 连接
@@ -43,6 +44,7 @@ enum class LogicalOperatorType
   GROUP_BY,    ///< 分组
   UPDATE,      ///< 更新
   ORDER_BY,    ///< 排序
+  LIMIT,       ///< limit
   HAVING,      ///< 分组过滤
 };
 
