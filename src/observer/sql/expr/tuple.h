@@ -179,11 +179,11 @@ public:
   RowTuple() = default;
   virtual ~RowTuple()
   {
-    for (FieldExpr *spec : speces_) {
-      delete spec;
-    }
     speces_.clear();
   }
+
+  RowTuple(const RowTuple &) = delete;
+  RowTuple& operator=(const RowTuple &) = delete;
 
   void set_record(Record *record) { this->record_ = record; }
 
@@ -192,13 +192,10 @@ public:
     table_ = table;
     // fix:join当中会多次调用右表的open,open当中会调用set_scheme，从而导致tuple当中会存储
     // 很多无意义的field和value，因此需要先clear掉
-    for (FieldExpr *spec : speces_) {
-      delete spec;
-    }
     this->speces_.clear();
     this->speces_.reserve(fields->size());
     for (const FieldMeta &field : *fields) {
-      speces_.push_back(new FieldExpr(table, &field));
+      speces_.emplace_back(new FieldExpr(table, &field));
     }
   }
 
@@ -211,8 +208,7 @@ public:
       return RC::INVALID_ARGUMENT;
     }
 
-    FieldExpr       *field_expr = speces_[index];
-    const FieldMeta *field_meta = field_expr->field().meta();
+    const FieldMeta *field_meta = speces_[index]->field().meta();
     // 如果 field 为 nullable，那么需要先读取一个字节，判断 value 是否为 null
     bool is_null = false;
     if(field_meta->nullable()) {
@@ -223,9 +219,20 @@ public:
       cell.set_null();
       return RC::SUCCESS;
     }
-    cell.set_type(field_meta->type());
-    cell.set_data(this->record_->data() + field_meta->offset() + field_meta->nullable(),
-        field_meta->len() - field_meta->nullable());
+    // 对于 text，需要先从 record 中读取 text 对应的 off，然后从 text buffer pool
+    // 读取对应的数据
+    if (field_meta->type() == AttrType::TEXTS || field_meta->high_vector()) {
+      RC rc = table_->get_text_from_record(
+          record_->data() + field_meta->offset() + field_meta->nullable(), cell, field_meta->high_vector());
+      if (RC::SUCCESS != rc) {
+        LOG_WARN("Failed to read text rc=%s", strrc(rc));
+        return rc;
+      }
+    } else {
+      cell.set_type(field_meta->type());
+      cell.set_data(this->record_->data() + field_meta->offset() + field_meta->nullable(),
+          field_meta->len() - field_meta->nullable());
+    }
     return RC::SUCCESS;
   }
 
@@ -245,8 +252,7 @@ public:
     }
 
     for (size_t i = 0; i < speces_.size(); ++i) {
-      const FieldExpr *field_expr = speces_[i];
-      const Field     &field      = field_expr->field();
+      const Field     &field      = speces_[i]->field();
       if (0 == strcmp(field_name, field.field_name())) {
         return cell_at(i, cell);
       }
@@ -259,8 +265,8 @@ public:
     clone_->set_record(new Record(*this->record_));
     clone_->table_ = this->table_;
     clone_->speces_.reserve(this->speces_.size());
-    for (const FieldExpr* spec: speces_) {
-      clone_->speces_.push_back(new FieldExpr(spec->field()));
+    for (auto& spec: speces_) {
+      clone_->speces_.emplace_back(new FieldExpr(spec->field()));
     }
     return clone_;
   }
@@ -288,9 +294,9 @@ public:
   const Record &record() const { return *record_; }
 
 private:
-  Record                  *record_ = nullptr;
-  const Table             *table_  = nullptr;
-  std::vector<FieldExpr *> speces_;
+  Record                                 *record_ = nullptr;
+  const Table                            *table_  = nullptr;
+  std::vector<std::unique_ptr<FieldExpr>> speces_;
 };
 
 class ViewRowTuple : public RowTuple
@@ -397,7 +403,7 @@ public:
   virtual int cell_num() const override { return static_cast<int>(cells_.size()); }
 
   std::unique_ptr<Tuple> clone() const override{
-    return std::make_unique<ValueListTuple>(*this);
+    return std::make_unique<ValueListTuple>();
   }
 
   virtual RC cell_at(int index, Value &cell) const override
@@ -521,7 +527,7 @@ public:
   }
 
   std::unique_ptr<Tuple> clone() const override{
-    std::unique_ptr<JoinedTuple> clone_ = make_unique<JoinedTuple>(*this);
+    std::unique_ptr<JoinedTuple> clone_ = make_unique<JoinedTuple>();
     clone_->set_left(this->left_->clone().release());
     clone_->set_right(this->right_->clone().release());
     return clone_;

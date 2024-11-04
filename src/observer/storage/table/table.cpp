@@ -27,6 +27,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/common/meta_util.h"
 #include "storage/index/bplus_tree_index.h"
 #include "storage/index/index.h"
+#include "storage/index/ivfflat_index.h"
 #include "storage/record/record_manager.h"
 #include "storage/table/table.h"
 #include "storage/trx/trx.h"
@@ -42,6 +43,11 @@ Table::~Table()
   if (data_buffer_pool_ != nullptr) {
     data_buffer_pool_->close_file();
     data_buffer_pool_ = nullptr;
+  }
+
+  if(text_buffer_pool_ != nullptr) {
+    text_buffer_pool_->close_file();
+    text_buffer_pool_ = nullptr;
   }
 
   for (vector<Index *>::iterator it = indexes_.begin(); it != indexes_.end(); ++it) {
@@ -124,6 +130,20 @@ RC Table::create(Db *db, int32_t table_id, const char *path, const char *name, c
     return rc;
   }
 
+  // init text buffer pool
+  std::string text_file = table_text_file(base_dir, name);
+  rc                    = bpm.create_file(text_file.c_str());
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to create disk buffer pool of text file. file name=%s", text_file.c_str());
+    return rc;
+  }
+  rc = init_text_bp(base_dir);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to create table %s due to init text handler failed.", text_file.c_str());
+    // don't need to remove the data_file
+    return rc;
+  }
+
   LOG_INFO("Successfully create table %s:%s", base_dir, name);
   return rc;
 }
@@ -150,17 +170,11 @@ RC Table::drop(const char *path, const char *name, const char *base_dir)
     LOG_ERROR("Failed to delete disk buffer pool of data file. file name=%s", data_file.c_str());
     return RC::FILE_NOT_EXIST;
   }
-
-  for (vector<Index *>::iterator it = indexes_.begin(); it != indexes_.end(); ++it) {
-    Index *index      = *it;
-    string index_file = table_index_file(base_dir_.c_str(), this->name(), index->index_meta().name());
-    if (::remove(index_file.c_str()) != 0) {
-      LOG_ERROR("Delete table file failed. filename=%s, errmsg=%d:%s", index_file.c_str(), errno, strerror(errno));
-      return RC::FILE_NOT_EXIST;
-    }
-    delete index;
+  string text_file = table_text_file(base_dir, name);
+  if (::remove(text_file.c_str()) != 0) {
+    LOG_ERROR("Failed to delete disk buffer pool of text file. file name=%s", text_file.c_str());
+    return RC::FILE_NOT_EXIST;
   }
-  indexes_.clear();
 
   // 删除 index 对应的 file
   LOG_INFO("Successfully delete table %s:%s", base_dir, name);
@@ -195,6 +209,14 @@ RC Table::open(Db *db, const char *meta_file, const char *base_dir)
     return rc;
   }
 
+  // 加载 text 文件
+  rc = init_text_bp(base_dir);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to open table %s due to init text bp failed.", base_dir);
+    // don't need to remove the data_file
+    return rc;
+  }
+
   const int index_num = table_meta_.index_num();
   for (int i = 0; i < index_num; i++) {
     const IndexMeta *index_meta = table_meta_.index(i);
@@ -214,7 +236,12 @@ RC Table::open(Db *db, const char *meta_file, const char *base_dir)
       field_metas.emplace_back(field_meta);
     }
 
-    BplusTreeIndex *index      = new BplusTreeIndex();
+    Index *index = nullptr;
+    if (index_meta->is_ivfflat()) {
+      index = new IvfflatIndex();
+    } else {
+      index = new BplusTreeIndex();
+    }
     string          index_file = table_index_file(base_dir, name(), index_meta->name());
 
     rc = index->open(this, index_file.c_str(), *index_meta, field_metas);
@@ -328,7 +355,10 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
   for (int i = 0; i < value_num && OB_SUCC(rc); i++) {
     const FieldMeta *field = table_meta_.field(i + normal_field_start_index);
     const Value &    value = values[i];
-    if (field->type() != value.attr_type()) {
+    // text 和 char 不需要转化
+    // 高纬度 vector 与 text 类似
+    if (field->type() != value.attr_type() &&
+        !(field->type() == AttrType::TEXTS && value.attr_type() == AttrType::CHARS)) {
       Value real_value;
       rc = Value::cast_to(value, field->type(), real_value);
       if (OB_FAIL(rc)) {
@@ -356,7 +386,7 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
   bool is_null = false;
   // 如果这个数据是 null，那么 field 必须为 nullable。
   if (value.is_null()) {
-    if(!field->nullable()) {
+    if (!field->nullable()) {
       LOG_WARN("failed to insert null record in not null field, field name:%s", field->name());
       return RC::UNSUPPORTED;
     }
@@ -364,26 +394,64 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
   }
 
   // 如果是 vector，那么其 length 应该与 field 的相同，null 则不考
+  // 高维 vector 则特殊处理
   if (!is_null) {
     if (field->type() == AttrType::VECTORS) {
-      if (field->len() - field->nullable() != value.length()) {
-        LOG_WARN("field's length %d should be the same as value's %d", field->len() - field->nullable(),value.length());
-        return RC::UNSUPPORTED;
+      if (field->high_vector()) {
+        ASSERT(field->len() == field->nullable() + sizeof(uint64_t) + sizeof(int), "error high vector length");
+        if (field->dim() * sizeof(double) != value.length()) {
+          LOG_WARN("high field's length %d should be the same as value's %d", field->dim() * sizeof(double), value.length());
+          return RC::INVALID_ARGUMENT;
+        }
+      } else {
+        if (field->len() - field->nullable() != value.length()) {
+          LOG_WARN("field's length %d should be the same as value's %d", field->len() - field->nullable(), value.length());
+          return RC::INVALID_ARGUMENT;
+        }
       }
     }
   }
 
-  size_t       copy_len = field->len();
-  const size_t data_len = value.length();
+  size_t    copy_len = field->len();
+  const int data_len = value.length();
   if (field->type() == AttrType::CHARS || field->type() == AttrType::VECTORS) {
     if (copy_len > data_len) {
       copy_len = data_len + 1;
     }
   }
+
+  record_data += field->offset();
+
   // 如果可以为 null，必须先写 sizeof(field->nullable()) 个字节，代表是否为 null
-  memcpy(record_data + field->offset(), &is_null, sizeof(is_null));
+  memcpy(record_data, &is_null, sizeof(is_null));
+  record_data += field->nullable();
+
+  // TODO(qiqi): 对于 text，我们需要将具体的数据存放在溢出页中，然后将其位置存在 record 中，
+  // 本应在外面控制向溢出页写的逻辑，以便 rollback 等操作，但是在这里写便于代码的编写，
+  // 所以暂不考虑其他
   if (!is_null) {
-    memcpy(record_data + field->offset() + field->nullable(), value.data(), copy_len - field->nullable());
+    if (field->type() == AttrType::TEXTS) {
+      ASSERT(value.attr_type() == AttrType::CHARS, "value type must be chars");
+      RC rc = set_text_and_store_record(value.data(), data_len, record_data);
+      if (OB_FAIL(rc)) {
+        LOG_WARN("failed to write text into text_buffer_pool_");
+        return rc;
+      }
+    } else if(field->high_vector()) {
+      // high vector 将 char 或 vector 类型数据转为 vector，
+      // 然后存入 text 溢出页
+      auto tmp = value;
+      if (value.attr_type() != AttrType::VECTORS) {
+        value.cast_to(value, AttrType ::VECTORS, tmp);
+      }
+      RC rc = set_text_and_store_record(tmp.data(), tmp.length(), record_data);
+      if (OB_FAIL(rc)) {
+        LOG_WARN("failed to write text into text_buffer_pool_");
+        return rc;
+      }
+    }else {
+      memcpy(record_data, value.data(), value.length());
+    }
   }
   return RC::SUCCESS;
 }
@@ -414,6 +482,57 @@ RC Table::init_record_handler(const char *base_dir)
   return rc;
 }
 
+RC Table::init_text_bp(const char *base_dir)
+{
+  string text_file = table_text_file(base_dir, table_meta_.name());
+
+  BufferPoolManager &bpm = db_->buffer_pool_manager();
+  RC                 rc  = bpm.open_file(db_->log_handler(), text_file.c_str(), text_buffer_pool_);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to open disk buffer pool for file:%s. rc=%d:%s", text_file.c_str(), rc, strrc(rc));
+    return rc;
+  }
+
+  return rc;
+}
+
+RC Table::get_text_from_record(const char* record, Value &result, const bool high_vector) const
+{
+  uint64_t off  = *(uint64_t *)record;
+  int      len  = *(int *)(record + sizeof(uint64_t));
+  char    *text = new char[len];
+  RC       rc   = text_buffer_pool_->get_data(text, len, off);
+  if (RC::SUCCESS != rc) {
+    LOG_WARN("Failed to read text rc=%s", strrc(rc));
+    return rc;
+  }
+  result.set_type(high_vector ? AttrType::VECTORS : AttrType::CHARS);
+  // 如果是 0，可以特判
+  if (len == 0) {
+    result.set_data("", len);
+  } else {
+    result.set_data(text, len);
+  }
+  delete[] text;
+
+  return RC::SUCCESS;
+}
+
+RC Table::set_text_and_store_record(const char *data, const int len, char *record)
+{
+  uint64_t off = 0;
+  RC       rc  = text_buffer_pool_->append(data, len, off);
+  if (RC::SUCCESS != rc) {
+    LOG_WARN("Failed to write text into text_bp, rc=%s", strrc(rc));
+    return RC::INTERNAL;
+  }
+
+  memcpy(record, &off, sizeof(off));
+  memcpy(record + sizeof(off), &len, sizeof(len));
+
+  return rc;
+}
+
 RC Table::get_record_scanner(RecordFileScanner &scanner, Trx *trx, ReadWriteMode mode)
 {
   RC rc = scanner.open_scan(this, *data_buffer_pool_, trx, db_->log_handler(), mode, nullptr);
@@ -432,7 +551,8 @@ RC Table::get_chunk_scanner(ChunkFileScanner &scanner, Trx *trx, ReadWriteMode m
   return rc;
 }
 
-RC Table::create_index(Trx *trx, const std::vector<const FieldMeta*> &field_metas, const char *index_name, const bool unique)
+RC Table::create_index(Trx *trx, const std::vector<const FieldMeta *> &field_metas, const char *index_name,
+    const bool unique, const std::unique_ptr<VectorIndexWith> &with)
 {
   if (common::is_blank(index_name) || field_metas.empty()) {
     LOG_INFO("Invalid input arguments, table name is %s, index_name is blank or attribute_name is blank", name());
@@ -441,7 +561,7 @@ RC Table::create_index(Trx *trx, const std::vector<const FieldMeta*> &field_meta
 
   IndexMeta new_index_meta;
 
-  RC rc = new_index_meta.init(index_name, field_metas, unique);
+  RC rc = new_index_meta.init(index_name, field_metas, unique, with);
   if (rc != RC::SUCCESS) {
     std::string field_names = field_metas[0]->name();
     for (int i = 0; i < static_cast<int>(field_metas.size()); i++) {
@@ -474,10 +594,15 @@ RC Table::create_index(Trx *trx, const std::vector<const FieldMeta*> &field_meta
   }
 
   // 创建索引相关数据
-  BplusTreeIndex *index      = new BplusTreeIndex();
-  string          index_file = table_index_file(base_dir_.c_str(), name(), index_name);
+  Index *index = nullptr;
+  if (with) {
+    index = new IvfflatIndex();
+  } else {
+    index = new BplusTreeIndex();
+  }
+  string index_file = table_index_file(base_dir_.c_str(), name(), index_name);
 
-  rc = index->create(this, index_file.c_str(), new_index_meta, field_ids, field_metas, unique);
+  rc = index->create(this, index_file.c_str(), new_index_meta, field_ids, field_metas);
   if (rc != RC::SUCCESS) {
     delete index;
     LOG_ERROR("Failed to create bplus tree index. file name=%s, rc=%d:%s", index_file.c_str(), rc, strrc(rc));

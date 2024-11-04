@@ -78,7 +78,8 @@ public:
   }
 
 // null 比较被视为大于
-int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> field_meta = nullptr) const
+// ignore 为 true 时，忽略 null 的唯一性，也就是说，用 null 查找 null，也会成功
+int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> field_meta = nullptr, bool ignore = false) const
   {
     int cmp_res = 0;
     // TODO(qiqi): 下面的注释是 2023 的，目前不用
@@ -110,12 +111,26 @@ int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> 
       // 如果是 null，那么视为大于
       if (nullable) {
         // 先比较第 1B 是否为 null
-        if (v1[offset] && v2[offset]) {
-          offset += attr_length;
-          cmp_res = 1;
-          break;
+        // 对于 delete 来说，v2 为 null 的时候，目标如果也是 null，算匹配
+        if (ignore) {
+          if (v2[offset] && v1[offset]) {
+            cmp_res = 0;
+            break;
+          }
+        } else {
+          // 如果是 insert 或者 select
+          // 如果 v2 是 null
+          if (v2[offset]) {
+            cmp_res = 1;
+            break;
+          } else if (v1[offset]) {
+            cmp_res = -1;
+            break;
+          }
         }
+        // 后面不比较 isnull
         offset++;
+        attr_length--;
       }
       switch (attr_type) {
         case AttrType::DATES:  {
@@ -143,10 +158,28 @@ int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> 
           break;
         }
         case AttrType::CHARS: {
-          if (0 == (cmp_res = common::compare_string((void *)(v1 + offset), attr_length, (void *)(v2 + offset), attr_length))) {
+          // 因为有 isnulll 标志位，需要用 memcmp
+          if (0 == (cmp_res = memcmp(v1 + offset, v2 + offset, attr_length))) {
             offset += attr_length;
           } else {
             return cmp_res;
+          }
+          break;
+        }
+        case AttrType::VECTORS: {
+          // TODO(qiqi): 事实上其他类型也可以向这样用 value 来比
+          Value left;
+          left.set_type(attr_type);
+          left.set_data(v1 + offset, attr_length);
+          Value right;
+          right.set_type(attr_type);
+          right.set_data(v2 + offset, attr_length);
+          auto res = left.compare(right);
+          switch (res) {
+            case ValCmpRes::LESS: cmp_res = -1; break;
+            case ValCmpRes::EQUAL: cmp_res = 0; break;
+            case ValCmpRes::GREAT: cmp_res = 1; break;
+            default: ASSERT(false, "error compare result. %d", res);
           }
           break;
         }
@@ -182,9 +215,10 @@ public:
 
   const AttrComparator &attr_comparator() const { return attr_comparator_; }
 
-  int operator()(const char *v1, const char *v2) const
+  // ignore 为 true 时，忽略 null 的唯一性，也就是说，用 null 查找 null，也会成功
+  int operator()(const char *v1, const char *v2, bool ignore = false) const
   {
-    int result = attr_comparator_(v1, v2);
+    int result = attr_comparator_(v1, v2, nullptr, ignore);
     if (result != 0) {
       return result;
     }
@@ -507,7 +541,8 @@ public:
    * 查找指定key的插入位置(注意不是key本身)
    * 如果key已经存在，会设置found的值。
    */
-  int lookup(const KeyComparator &comparator, const char *key, bool *found = nullptr) const;
+  // ignore 为 true 时，忽略 null 的唯一性，也就是说，用 null 查找 null，也会成功
+  int lookup(const KeyComparator &comparator, const char *key, bool *found = nullptr, bool ignore = false) const;
 
   RC  insert(int index, const char *key, const char *value);
   RC  remove(int index);

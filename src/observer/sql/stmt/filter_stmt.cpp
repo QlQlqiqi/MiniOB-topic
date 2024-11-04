@@ -33,8 +33,12 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
   FilterStmt *tmp_stmt    = new FilterStmt();
   BinderContext binder_context;
 
-  for (auto [_, table]:(*table_map)) {
+    // tmp_stmt->set_expr(conditions->Clone());
+    // auto condition_expr = tmp_stmt->expr_.get();
+  for (auto [table_name, table]:(*table_map)) {
     binder_context.add_table(table);
+    rc = binder_context.add_alias(table_name, table); //这里传进来的table_map 可能存在别名,所以需要加入映射
+    if (OB_FAIL(rc)) { return rc; }
   }
   // collect query fields in `select` statement
   vector<unique_ptr<Expression>> bound_expressions;
@@ -45,30 +49,34 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
     filter_expressions.reserve(1);
     auto l  = conditions->Clone();
 
-    if (l->type() == ExprType::COMPARISON)
-    {
-      auto comp_expr = static_cast<ComparisonExpr *>(l.get());
-      auto f         = [db](SubQueryExpr *subquery_expr) {
-        Stmt *select_stmt = nullptr;
-        if (RC rc = SelectStmt::create(db, *subquery_expr->sql_node(), select_stmt); RC::SUCCESS != rc)
+    RC   rc = expression_binder.bind_expression(l, filter_expressions, false, default_table);
+    if (OB_FAIL(rc)) {
+      LOG_INFO("bind expression failed. rc=%s", strrc(rc));
+      return rc;
+    }
+
+    ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
+
+    auto prepare_subquery = [db, table_map](Expression* expr) {
+      RC rc = RC::SUCCESS;
+      if (expr->type() == ExprType::SUBQUERY) {
+        auto  subquery_expr = static_cast<SubQueryExpr *>(expr);
+        Stmt *select_stmt   = nullptr;
+        if (RC rc = SelectStmt::create(db, *subquery_expr->sql_node(), select_stmt, *table_map); RC::SUCCESS != rc)
         {
           return rc;
         }
         if (select_stmt->type() != StmtType::SELECT) { return RC::INVALID_ARGUMENT; }
         subquery_expr->set_select_stmt(static_cast<SelectStmt *>(select_stmt));
-        return RC::SUCCESS;
-      };
-
-      if (auto left  = comp_expr->left().get();  left->type() == ExprType::SUBQUERY)  { rc = f(static_cast<SubQueryExpr *>(left)); }
-      if (auto right = comp_expr->right().get(); right->type() == ExprType::SUBQUERY) { rc = f(static_cast<SubQueryExpr *>(right)); }
-    }
-
-    RC   rc = expression_binder.bind_expression(l, filter_expressions);
-    if (OB_FAIL(rc)) {
-      LOG_INFO("bind expression failed. rc=%s", strrc(rc));
+      }
       return rc;
-    }
-    ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
+    };
+
+    if (OB_FAIL(filter_expressions[0]->traverse(prepare_subquery)))
+    {
+      LOG_WARN("zyq: filter expr traverse failed");
+      return RC::INTERNAL;
+    };
     tmp_stmt->set_expr(std::move(filter_expressions[0]));
   }
 

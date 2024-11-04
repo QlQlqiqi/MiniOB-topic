@@ -28,6 +28,7 @@ class InsertStmt;
 class UpdateStmt;
 class DeleteStmt;
 class ExplainStmt;
+class LimitStmt;
 class LogicalOperator;
 
 class LogicalPlanGenerator
@@ -43,6 +44,7 @@ private:
   static RC create_plan(CalcStmt *calc_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   static RC create_plan(SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator, ReadWriteMode read_write_mode = ReadWriteMode::READ_ONLY);
   static RC create_plan(FilterStmt *filter_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
+  static RC create_plan(LimitStmt *limit_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   static RC create_plan(InsertStmt *insert_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   static RC create_plan(UpdateStmt *insert_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   static RC create_plan(DeleteStmt *delete_stmt, std::unique_ptr<LogicalOperator> &logical_operator);

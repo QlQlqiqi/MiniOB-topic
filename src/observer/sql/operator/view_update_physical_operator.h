@@ -30,7 +30,7 @@ class View;
 class ViewUpdatePhysicalOperator : public PhysicalOperator
 {
 public:
-  ViewUpdatePhysicalOperator(View *view, std::vector<std::pair<FieldMeta, Value>> values);
+  ViewUpdatePhysicalOperator(View *view, std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>>&& values);
 
   virtual ~ViewUpdatePhysicalOperator() = default;
 
@@ -51,5 +51,5 @@ private:
   Trx                   *trx_   = nullptr;
   std::vector<Record>    records_;
   std::vector<ViewRowTuple> tuples_;
-  std::vector<std::pair<FieldMeta, Value>> values_;
+  std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>> values_;
 };

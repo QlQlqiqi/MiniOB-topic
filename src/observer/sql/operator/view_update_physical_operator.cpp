@@ -22,7 +22,7 @@ See the Mulan PSL v2 for more details. */
 using namespace std;
 
 ViewUpdatePhysicalOperator::ViewUpdatePhysicalOperator(
-    View *view, std::vector<std::pair<FieldMeta, Value>> values)
+    View *view, std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>>&& values)
     : view_(view), values_(std::move(values))
 {}
 

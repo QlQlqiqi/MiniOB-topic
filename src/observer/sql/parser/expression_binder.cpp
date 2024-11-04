@@ -24,12 +24,15 @@ using namespace common;
 
 Table *BinderContext::find_table(const char *table_name) const
 {
-  auto pred = [table_name](Table *table) { return 0 == strcasecmp(table_name, table->name()); };
-  auto iter = ranges::find_if(query_tables_, pred);
-  if (iter == query_tables_.end()) {
+  if(table_name == nullptr){
     return nullptr;
   }
-  return *iter;
+
+  if(query_table_maps_.count(table_name) == 0){
+    return nullptr;
+  }
+
+  return query_table_maps_.at(table_name);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,7 +54,7 @@ static void wildcard_fields(Table *table, vector<unique_ptr<Expression>> &expres
   }
 }
 
-RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions, bool mutil_tables)
+RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions, bool mutil_tables, Table *default_table)
 {
   if (nullptr == expr) {
     return RC::SUCCESS;
@@ -63,7 +66,7 @@ RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique
     } break;
 
     case ExprType::UNBOUND_FIELD: {
-      return bind_unbound_field_expression(expr, bound_expressions, mutil_tables);
+      return bind_unbound_field_expression(expr, bound_expressions, mutil_tables, default_table);
     } break;
 
     case ExprType::UNBOUND_AGGREGATION: {
@@ -83,7 +86,7 @@ RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique
     } break;
 
     case ExprType::COMPARISON: {
-      return bind_comparison_expression(expr, bound_expressions);
+      return bind_comparison_expression(expr, bound_expressions, default_table);
     } break;
 
     case ExprType::CONJUNCTION: {
@@ -128,6 +131,12 @@ RC ExpressionBinder::bind_star_expression(
 
   auto star_expr = static_cast<StarExpr *>(expr.get());
 
+  if (!star_expr->alias().empty())
+  {
+    LOG_WARN("zyq: it is invalid to give an alias for a star field");
+    return RC::INVALID_ARGUMENT;
+  }
+
   vector<Table *> tables_to_wildcard;
 
   const char *table_name = star_expr->table_name();
@@ -152,7 +161,7 @@ RC ExpressionBinder::bind_star_expression(
 }
 
 RC ExpressionBinder::bind_unbound_field_expression(
-    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions, bool mutil_tables)
+    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions, bool mutil_tables, Table *default_table)
 {
   if (nullptr == expr) {
     return RC::SUCCESS;
@@ -165,12 +174,17 @@ RC ExpressionBinder::bind_unbound_field_expression(
 
   Table *table = nullptr;
   if (is_blank(table_name)) {
-    if (context_.query_tables().size() != 1) {
-      LOG_INFO("cannot determine table for field: %s", field_name);
-      return RC::SCHEMA_TABLE_NOT_EXIST;
+    if (auto &tables = context_.query_tables(); tables.size() != 1) {
+      if (std::find(tables.cbegin(), tables.cend(), default_table) == tables.cend()) {
+        LOG_INFO("cannot determine table for field: %s", field_name);
+        return RC::SCHEMA_TABLE_NOT_EXIST;
+      } else {
+        table = default_table;
+      }
+    } else {
+      table = *(context_.query_tables().begin());
     }
 
-    table = context_.query_tables()[0];
   } else {
     table = context_.find_table(table_name);
     if (nullptr == table) {
@@ -180,6 +194,11 @@ RC ExpressionBinder::bind_unbound_field_expression(
   }
 
   if (0 == strcmp(field_name, "*")) {
+    if (!unbound_field_expr->alias().empty())
+    {
+      LOG_WARN("zyq: it is invalid to give an alias for a star field");
+      return RC::INVALID_ARGUMENT;
+    }
     wildcard_fields(table, bound_expressions, mutil_tables);
   } else {
     const FieldMeta *field_meta = table->table_meta().field(field_name);
@@ -251,7 +270,7 @@ RC ExpressionBinder::bind_cast_expression(
 }
 
 RC ExpressionBinder::bind_comparison_expression(
-    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions)
+    unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bound_expressions, Table *default_table)
 {
   if (nullptr == expr) {
     return RC::SUCCESS;
@@ -263,7 +282,7 @@ RC ExpressionBinder::bind_comparison_expression(
   unique_ptr<Expression>        &left_expr  = comparison_expr->left();
   unique_ptr<Expression>        &right_expr = comparison_expr->right();
 
-  RC rc = bind_expression(left_expr, child_bound_expressions);
+  RC rc = bind_expression(left_expr, child_bound_expressions, false, default_table);
   if (rc != RC::SUCCESS) {
     return rc;
   }

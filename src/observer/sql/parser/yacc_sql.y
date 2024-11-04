@@ -13,6 +13,7 @@
 #include "sql/parser/lex_sql.h"
 #include "sql/expr/expression.h"
 #include "common/time/datetime.h"
+#include "common/type/vector_type.h"
 
 using namespace std;
 
@@ -119,6 +120,13 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         STRING_T
         FLOAT_T
         VECTOR_T
+        WITH_T
+        DISTANCE_T
+        TYPE_T
+        IVFFLAT_T
+        LISTS_T
+        PROBES_T
+        TEXT_T
         IS
         NOT
         NULL_T
@@ -134,6 +142,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         OR
         SET
         ON
+        AS
         LOAD
         DATA
         INFILE
@@ -161,6 +170,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         VECTORS
         QUOTE
         UNIQUE
+        LIMIT
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -177,6 +187,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
   std::vector<std::string> *                 relation_list;
   std::vector<std::string> *                 id_list;
   std::vector<std::unique_ptr<OrderBySqlNode>>* order_by_list;
+  LimitSqlNode *                             limit;
   OrderBySqlNode*                            order_unit;
   OrderOp                                    order_op;
   InnerJoinUnit*                             inner_join_unit;
@@ -188,6 +199,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
   std::vector<double> *                      double_list;
   double                                     float_number;
   KeyValueList *                             kv_list;
+  VectorIndexWith *                          vector_index_with;
 }
 
 %token <number> NUMBER
@@ -199,12 +211,16 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 
 /** type 定义了各种解析后的结果输出的是什么类型。类型对应了 union 中的定义的成员变量名称 **/
 %type <float_number>       float_number
+%type <vector_index_with>   vector_index_with
+%type <limit>               opt_limit
 %type <double_list>         double_list
 %type <number>              type
 %type <expression>          condition
 %type <value>               value
+%type <number>              vector_func_type
 %type <number>              number
 %type <string>              relation
+%type <string>              alias;
 %type <comp>                comp_op
 %type <comp>                exists_op
 %type <rel_attr>            rel_attr
@@ -225,7 +241,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <expression>          expression
 %type <expression>          sub_query_expr
 %type <expression>          aggregate_expr
-%type <expression>          group_by_expression_list
+%type <expression>          aggr_argument_list
 %type <expression_list>     expression_list
 %type <expression_list>     group_by
 %type <expression>          opt_having
@@ -425,7 +441,41 @@ create_index_stmt:    /*create index 语句的语法解析树*/
       free($8);
       delete $9;
     }
+    | CREATE VECTOR_T INDEX ID ON ID LBRACE ID idx_col_list RBRACE vector_index_with
+    {
+      $$ = new ParsedSqlNode(SCF_CREATE_INDEX);
+      CreateIndexSqlNode &create_index = $$->create_index;
+      create_index.index_name = $4;
+      create_index.relation_name = $6;
+      create_index.unique = false;
+      create_index.attr_names.swap(*$9);
+      create_index.attr_names.emplace_back($8);
+      std::reverse(create_index.attr_names.begin(), create_index.attr_names.end());
+      create_index.with = nullptr;
+      if($11) {
+        create_index.with = std::unique_ptr<VectorIndexWith>($11);
+      }
+      free($4);
+      free($6);
+      free($8);
+      delete $9;
+    }
     ;
+
+vector_index_with:
+    WITH_T LBRACE TYPE_T EQ IVFFLAT_T COMMA DISTANCE_T EQ vector_func_type COMMA LISTS_T EQ number COMMA PROBES_T EQ number RBRACE
+    {
+      VectorIndexWith *with = new VectorIndexWith();
+      with->func_type = $9;
+      // type 只有 ivfflat
+      with->type = 1;
+      with->lists = $13;
+      with->probes = $17;
+
+      $$ = with;
+    }
+    ;
+
 opt_unique:
     /* empty */
     {
@@ -499,9 +549,18 @@ attr_def:
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = $6 == true;
+      $$->high_vector = false;
+      $$->dim = 0;
       // 如果是 vector，那么这里的 length 代表的是数量
       if($2 == static_cast<int>(AttrType::VECTORS)) {
-        $$->length += $4 * sizeof(double);
+        $$->dim = $4;
+        // 如果其设置的 dim 过大，设置 vector 存储规则与 text 相同
+        if($4 > VECTOR_HIGH_DIM) {
+          $$->length += sizeof(uint64_t) + sizeof(int32_t);
+          $$->high_vector = true;
+        } else {
+          $$->length += $4 * sizeof(double);
+        }
       } else {
         $$->length += $4;
       }
@@ -515,19 +574,41 @@ attr_def:
       $$->name = $1;
       // 这块是 4 是因为 char 和 vector 需要用 ()
       $$->length = 4 + ($3 == true);
+      $$->high_vector = false;
+      $$->dim = 0;
       // 如果是 date，应该为 sizeof(common::DateTime)
       if($$->type == AttrType::DATES) {
         $$->length = sizeof(common::DateTime) + ($3 == true);
       }
+      // 如果是 text，应该为 sizeof(uint64_t) + sizeof(int32_t)
+      // 代表 text file 中 offset 和 text length
+      else if($$->type == AttrType::TEXTS) {
+        $$->length = sizeof(uint64_t) + sizeof(int32_t) + ($3 == true);
+      }
       $$->nullable = $3;
       free($1);
+    }
+    ;
+
+alias:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    |ID
+    {
+      $$ = $1;
+    }
+    | AS ID
+    {
+      $$ = $2;
     }
     ;
 opt_null:
     /* empty */
     {
       // 根据 primary-null.result 来看，默认是 not null
-      $$ = false;
+      $$ = true;
     }
     | NOT NULL_T
     {
@@ -546,6 +627,7 @@ type:
     | STRING_T { $$ = static_cast<int>(AttrType::CHARS); }
     | FLOAT_T  { $$ = static_cast<int>(AttrType::FLOATS); }
     | VECTOR_T { $$ = static_cast<int>(AttrType::VECTORS); }
+    | TEXT_T   { $$ = static_cast<int>(AttrType::TEXTS); }
     | DATE_T   { $$ = static_cast<int>(AttrType::DATES); }
     ;
 insert_stmt:        /*insert   语句的语法解析树*/
@@ -661,47 +743,53 @@ float_number: NUMBER {
     }
     ;
 delete_stmt:    /*  delete 语句的语法解析树*/
-    DELETE FROM ID where 
+    DELETE FROM ID alias where 
     {
       $$ = new ParsedSqlNode(SCF_DELETE);
       $$->deletion.relation_name = $3;
-      $$->deletion.conditions = $4;
+      if($4 != nullptr){
+      $$->deletion.relation_alias = $4;
+      }
+      $$->deletion.conditions = $5;
       free($3);
+      free($4);
     }
     ;
 update_stmt:      /*  update 语句的语法解析树*/
-    UPDATE ID SET update_kv_list where 
+    UPDATE ID alias SET update_kv_list where 
     {
       $$ = new ParsedSqlNode(SCF_UPDATE);
       $$->update.relation_name = $2;
-      $$->update.attribute_name.swap($4->attrs);
-      $$->update.value.swap($4->values);
-      $$->update.conditions = $5;
+      if($3 != nullptr){
+        $$->update.relation_alias = $3;
+      }
+      $$->update.attribute_name.swap($5->attrs);
+      $$->update.value.swap($5->values);
+      $$->update.conditions = $6;
       free($2);
-      delete($4);
+      free($3);
+      delete($5);
     }
     ;
 update_kv_list:
-    ID EQ value
+    ID EQ expression
     {
       $$ = new KeyValueList{};
       $$->attrs.emplace_back($1);
-      $$->values.emplace_back(*$3);
+      $$->values.emplace_back($3);
       free($1);
-      delete $3;
     }
-    | update_kv_list COMMA ID EQ value
+    | update_kv_list COMMA ID EQ expression
     {
       $$ = $1;
       $$->attrs.emplace_back($3);
-      $$->values.emplace_back(*$5);
+      $$->values.emplace_back($5);
       free($3);
-      delete $5;
     }
     ;
 
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT expression_list FROM rel_list inner_join_list where group_by opt_having order_by
+    SELECT expression_list FROM rel_list inner_join_list where group_by opt_having order_by opt_limit
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -710,7 +798,7 @@ select_stmt:        /*  select 语句的语法解析树*/
       }
 
       if ($4 != nullptr) {
-        if($5 != nullptr && $4->size() != 1){
+        if($5 != nullptr && $4->size() != 2){
           yyerror(&@$,sql_string,sql_result,scanner,"inner join only support one table",true);
           delete $4;
           YYERROR;
@@ -740,6 +828,10 @@ select_stmt:        /*  select 语句的语法解析树*/
         $$->selection.order_by.swap(*$9);
         delete $9;
       }
+
+      if($10 != nullptr){
+        $$->selection.limit = std::unique_ptr<LimitSqlNode>($10);
+      }
     }
     | SELECT expression_list
     {
@@ -760,36 +852,49 @@ calc_stmt:
     ;
 
 expression_list:
-    expression
+    expression alias
     {
       $$ = new std::vector<std::unique_ptr<Expression>>;
       $$->emplace_back($1);
+      if($2 != nullptr){
+        $1->set_alias($2);
+        free($2);
+      }
     }
-    | expression COMMA expression_list
+    | expression alias COMMA expression_list
     {
-      if ($3 != nullptr) {
-        $$ = $3;
+      if ($4 != nullptr) {
+        $$ = $4;
       } else {
         $$ = new std::vector<std::unique_ptr<Expression>>;
+      }
+      if($2 != nullptr){
+        $1->set_alias($2);
+        free($2);
       }
       $$->emplace($$->begin(), $1);
     }
     ;
 
-group_by_expression_list:
+aggr_argument_list:
   /* empty */
   {
     $$ = nullptr;
   }
-  | expression COMMA expression_list
+  | expression alias
+  {
+    if($2 != nullptr){
+      $1->set_alias($2);
+      free($2);
+    }
+    $$ = $1;
+  }
+  | expression alias COMMA expression_list
   {
     $$ = nullptr;
     delete $1;
-    delete $3;
-  }
-  | expression
-  {
-    $$ = $1;
+    free($2);
+    delete $4;
   }
   ;
 
@@ -829,17 +934,11 @@ expression:
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
+    | vector_func_type LBRACE expression COMMA expression RBRACE {
+      $$ = create_function_expression((FunctionExpr::Type)$1, sql_string, $3, $5, &@$);
+    }
     | aggregate_expr {
       $$ = $1;
-    }
-    | L2_DISTANCE LBRACE expression COMMA expression RBRACE {
-      $$ = create_function_expression(FunctionExpr::Type::L2_DISTANCE, sql_string, $3, $5, &@$);
-    }
-    | COSINE_DISTANCE LBRACE expression COMMA expression RBRACE {
-      $$ = create_function_expression(FunctionExpr::Type::COSINE_DISTANCE, sql_string, $3, $5, &@$);
-    }
-    | INNER_PRODUCT LBRACE expression COMMA expression RBRACE {
-      $$ = create_function_expression(FunctionExpr::Type::INNER_PRODUCT, sql_string, $3, $5, &@$);
     }
     | sub_query_expr {
       $$ = $1;
@@ -849,20 +948,32 @@ expression:
     }
     ;
 
+vector_func_type: 
+    L2_DISTANCE {
+      $$ = static_cast<int>(FunctionExpr::Type::L2_DISTANCE);
+    }
+    | COSINE_DISTANCE {
+      $$ = static_cast<int>(FunctionExpr::Type::COSINE_DISTANCE);
+    }
+    | INNER_PRODUCT {
+      $$ = static_cast<int>(FunctionExpr::Type::INNER_PRODUCT);
+    }
+    ;
+
 aggregate_expr:
-    COUNT LBRACE group_by_expression_list RBRACE {
+    COUNT LBRACE aggr_argument_list RBRACE {
       $$ = create_aggregate_expression("count", $3, sql_string, &@$);
     }
-    | SUM LBRACE group_by_expression_list RBRACE {
+    | SUM LBRACE aggr_argument_list RBRACE {
       $$ = create_aggregate_expression("sum", $3, sql_string, &@$);
     }
-    | AVG LBRACE group_by_expression_list RBRACE {
+    | AVG LBRACE aggr_argument_list RBRACE {
       $$ = create_aggregate_expression("avg", $3, sql_string, &@$);
     }
-    | MIN LBRACE group_by_expression_list RBRACE {
+    | MIN LBRACE aggr_argument_list RBRACE {
       $$ = create_aggregate_expression("min", $3, sql_string, &@$);
     }
-    | MAX LBRACE group_by_expression_list RBRACE {
+    | MAX LBRACE aggr_argument_list RBRACE {
       $$ = create_aggregate_expression("max", $3, sql_string, &@$);
     }
 
@@ -887,6 +998,12 @@ rel_attr:
       free($1);
       free($3);
     }
+    | ID DOT '*' {
+      $$ = new RelAttrSqlNode;
+      $$->relation_name  = $1;
+      $$->attribute_name = "*";
+      free($1);
+    }
     ;
 
 relation:
@@ -895,18 +1012,29 @@ relation:
     }
     ;
 rel_list:
-    relation {
+    relation alias{
       $$ = new std::vector<std::string>();
       $$->push_back($1);
+      if($2 != nullptr){
+        $$->push_back($2); //存在别名
+      }else{
+        $$->push_back(""); //别名为空
+      }
       free($1);
     }
-    | relation COMMA rel_list {
-      if ($3 != nullptr) {
-        $$ = $3;
+    | relation alias COMMA rel_list { 
+      if ($4 != nullptr) {
+        $$ = $4;
       } else {
         $$ = new std::vector<std::string>;
       }
 
+//Todo 改变遍历顺序
+      if($2 != nullptr){
+        $$->insert($$->begin(), $2); 
+      }else{
+        $$->insert($$->begin(),"");
+      }
       $$->insert($$->begin(), $1);
       free($1);
     }
@@ -925,14 +1053,21 @@ inner_join_list:
         $$ = $1;
       }
       $$->relations.emplace_back($2->relation);
+      $$->relations.emplace_back($2->relation_alias);
       $$->conditions.emplace_back(std::move($2->condition));
       delete $2;
     }
     ;
 inner_join_rel:
-    INNER JOIN relation ON condition{
+    INNER JOIN relation alias ON condition{
       $$ = new InnerJoinUnit($3); 
-      $$->condition.reset($5); 
+      if($4 != nullptr){
+        $$->relation_alias = $4;
+        free($4);
+      }else{
+        $$->relation_alias = "";
+      }
+      $$->condition.reset($6); 
       free($3);
     }
     ;
@@ -1015,6 +1150,7 @@ opt_having:
   {
     $$ = $2;
   }
+  ;
 
 // your code here
 order_by:
@@ -1029,6 +1165,18 @@ order_by:
     }
     ;
 
+opt_limit:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | LIMIT number
+    {
+      $$ = new LimitSqlNode();
+      $$->number = $2;
+    }
+    ;
+
 order_by_list:
     order_unit
     {
@@ -1040,6 +1188,7 @@ order_by_list:
       $$ = $3;
       $$->emplace_back($1);
     }
+    ;
 
 order_unit:
     rel_attr order_op
@@ -1050,6 +1199,13 @@ order_unit:
       $$->order_op = $2;
       delete $1;
     }
+    | vector_func_type LBRACE expression COMMA expression RBRACE order_op {
+      $$ = new OrderBySqlNode;
+      $$->unbound_field = std::unique_ptr<Expression>(create_function_expression((FunctionExpr::Type)$1, sql_string, $3, $5, &@$));
+      $$->order_op = $7;
+    }
+    ;
+
 order_op:
     {
       $$ = OrderOp::ASC;
@@ -1062,6 +1218,7 @@ order_op:
     {
       $$ = OrderOp::DESC;
     }
+    ;
 
 load_data_stmt:
     LOAD DATA INFILE SSS INTO TABLE ID 

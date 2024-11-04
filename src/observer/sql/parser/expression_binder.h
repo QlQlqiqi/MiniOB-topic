@@ -24,7 +24,29 @@ public:
   BinderContext()          = default;
   virtual ~BinderContext() = default;
 
-  void add_table(Table *table) { query_tables_.push_back(table); }
+  void add_table(Table *table) { 
+    if(table!= nullptr){
+        if(table_set_.count(table) == 0){
+            query_table_maps_[table->name()] = table;
+            table_set_.insert(table);
+            query_tables_.push_back(table);
+        }
+    }
+  }
+
+  //调用改函数之前必须保证已经调用了 add_table
+  RC add_alias(const std::string& table_name, Table* table){
+    //query_table_map 映射存在，表示有相同别名或者表名已经存在映射
+    if(query_table_maps_.count(table_name) == 0 && table_set_.count(table) != 0){
+      query_table_maps_.insert({table_name, table});
+    }
+    else
+    {
+      LOG_WARN("zyq: add alias failed.");
+      return RC::INVALID_ARGUMENT;
+    }
+    return RC::SUCCESS;
+  }
 
   Table *find_table(const char *table_name) const;
 
@@ -32,6 +54,9 @@ public:
 
 private:
   std::vector<Table *> query_tables_;
+  std::set<Table *> table_set_;
+  //记录表名/别名 到 Table* 的映射
+  std::unordered_map<std::string, Table*> query_table_maps_;
 };
 
 /**
@@ -44,13 +69,13 @@ public:
   ExpressionBinder(BinderContext &context) : context_(context) {}
   virtual ~ExpressionBinder() = default;
 
-  RC bind_expression(std::unique_ptr<Expression> &expr, std::vector<std::unique_ptr<Expression>> &bound_expressions, bool mutil_tables = false);
+  RC bind_expression(std::unique_ptr<Expression> &expr, std::vector<std::unique_ptr<Expression>> &bound_expressions, bool mutil_tables = false, Table *default_table = nullptr);
 
 private:
   RC bind_star_expression(std::unique_ptr<Expression> &star_expr,
       std::vector<std::unique_ptr<Expression>> &bound_expressions, bool mutil_tables = false);
   RC bind_unbound_field_expression(std::unique_ptr<Expression> &unbound_field_expr,
-      std::vector<std::unique_ptr<Expression>> &bound_expressions, bool mutil_tables = false);
+      std::vector<std::unique_ptr<Expression>> &bound_expressions, bool mutil_tables, Table *default_table);
   RC bind_field_expression(
       std::unique_ptr<Expression> &field_expr, std::vector<std::unique_ptr<Expression>> &bound_expressions);
   RC bind_value_expression(
@@ -58,7 +83,7 @@ private:
   RC bind_cast_expression(
       std::unique_ptr<Expression> &cast_expr, std::vector<std::unique_ptr<Expression>> &bound_expressions);
   RC bind_comparison_expression(
-      std::unique_ptr<Expression> &comparison_expr, std::vector<std::unique_ptr<Expression>> &bound_expressions);
+      std::unique_ptr<Expression> &comparison_expr, std::vector<std::unique_ptr<Expression>> &bound_expressions, Table *default_table);
   RC bind_conjunction_expression(
       std::unique_ptr<Expression> &conjunction_expr, std::vector<std::unique_ptr<Expression>> &bound_expressions);
   RC bind_arithmetic_expression(

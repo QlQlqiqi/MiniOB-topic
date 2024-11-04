@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include <vector>
 
 #include "common/rc.h"
+#include "sql/stmt/limit_stmt.h"
 #include "sql/stmt/stmt.h"
 #include "storage/field/field.h"
 #include "orderby_stmt.h"
@@ -40,7 +41,8 @@ public:
   StmtType type() const override { return StmtType::SELECT; }
 
 public:
-  static RC create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt);
+  static RC create(
+      Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unordered_map<std::string, Table *> parents = {});
 
 public:
   const std::vector<Table *> &tables() const { return tables_; }
@@ -50,6 +52,7 @@ public:
   std::vector<std::unique_ptr<Expression>> &query_expressions() { return query_expressions_; }
   std::vector<std::unique_ptr<Expression>> &group_by() { return group_by_; }
   std::unique_ptr<OrderByStmt>             &order_by() { return order_by_;}
+  std::unique_ptr<LimitStmt>               &limit() { return limit_;}
   std::unordered_map<Table* , std::unique_ptr<FilterStmt>> &join_conditions() { return join_conditions_; }
  
 private:
@@ -59,5 +62,6 @@ private:
   std::vector<std::unique_ptr<Expression>> group_by_;
   FilterStmt                              *having_filter_stmt_ = nullptr;
   std::unique_ptr<OrderByStmt>             order_by_;
+  std::unique_ptr<LimitStmt>               limit_;
   std::unordered_map<Table* , std::unique_ptr<FilterStmt>> join_conditions_;
 };

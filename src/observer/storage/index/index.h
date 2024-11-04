@@ -41,7 +41,7 @@ public:
   virtual ~Index() = default;
 
   virtual RC create(Table *table, const char *file_name, const IndexMeta &index_meta, const std::vector<int> &field_ids,
-      const std::vector<const FieldMeta *> &field_metas, const bool unique)
+      const std::vector<const FieldMeta *> &field_metas)
   {
     return RC::UNSUPPORTED;
   }

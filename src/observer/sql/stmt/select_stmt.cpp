@@ -30,8 +30,13 @@ SelectStmt::~SelectStmt()
     filter_stmt_ = nullptr;
   }
 }
+auto insert_alias_into_table_map (const std::string& alias, Table* table, unordered_map<std::string, Table*> &table_map) -> void{
+  if(table_map.count(alias) == 0){
+    table_map.insert({alias, table});
+  }
+}
 
-RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
+RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unordered_map<std::string, Table *> parents)
 {
   if (nullptr == db) {
     LOG_WARN("invalid argument. db is null");
@@ -43,6 +48,12 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   // collect tables in `from` statement
   vector<Table *>                tables;
   unordered_map<string, Table *> table_map;
+
+  for (auto& [name, table] : parents) {
+    binder_context.add_table(table);
+    // 处理子查询时，这里区分上级查询和本级查询涉及的表，上级查询不做 tables.push_back(table);。
+    table_map.insert({name, table});
+  }
 
   auto check_and_collect_table = [&](const std::string& relation, Table **table){
     const char *table_name = relation.c_str();
@@ -59,18 +70,28 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
     return RC::SUCCESS;
   };
 
-  for (size_t i = 0; i < select_sql.relations.size(); i++) {
+
+  //relations[i] 为 relation_name; relations[i+1] 为 relation_alias 没有为""
+  for (size_t i = 0; i < select_sql.relations.size(); i = i+2) {
     const char *table_name = select_sql.relations[i].c_str();
+    std::string table_alias = select_sql.relations[i + 1];
     Table* table = nullptr;
     RC rc = check_and_collect_table(select_sql.relations[i], &table);
 
     if(rc != RC::SUCCESS){
       return rc;
     }
-
     binder_context.add_table(table);
     tables.push_back(table);
     table_map.insert({table_name, table});
+
+    if(!table_alias.empty()){
+      rc = binder_context.add_alias(table_alias, table);
+      if (OB_FAIL(rc)) {
+        return rc;
+      }
+      insert_alias_into_table_map(table_alias, table, table_map);
+    }
   }
 
   // inner join statement
@@ -78,42 +99,43 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   if(select_sql.inner_join != nullptr){
     auto &inner_join_relations = select_sql.inner_join->relations;
     auto &inner_join_conditions = select_sql.inner_join->conditions; 
-    assert(inner_join_conditions.size() == inner_join_relations.size());
-    for(size_t i = 0; i < inner_join_relations.size(); i++){
+    ASSERT(inner_join_conditions.size() * 2 == inner_join_relations.size(), "inner join conditions and relations size not match");
+
+    //i加2：因为inner_join_relations中存了relrelation_name, relation_alias。
+    //relations[i] 为 relation_name; relations[i+1] 为 relation_alias 没有为""
+    for(size_t i = 0; i < inner_join_relations.size(); i = i+2){
       Table *table = nullptr;
+      auto &relation_name = inner_join_relations[i];
+      auto &relation_alias = inner_join_relations[i+1];
+      auto &condition = inner_join_conditions[i/2];
       RC rc = RC::SUCCESS;
-      if((rc = check_and_collect_table(inner_join_relations[i], &table)) != RC::SUCCESS){
+      if((rc = check_and_collect_table(relation_name, &table)) != RC::SUCCESS){
         return rc;
       }
 
       binder_context.add_table(table);
       tables.push_back(table);
-      table_map.insert({inner_join_relations[i], table});
+      table_map.insert({relation_name, table});
+
+      if(!relation_alias.empty()){
+        rc = binder_context.add_alias(relation_alias, table);
+        if (OB_FAIL(rc)) {
+          return rc;
+        }
+        insert_alias_into_table_map(relation_alias, table, table_map);
+      }
 
       FilterStmt *filter_stmt = nullptr;
       rc                      = FilterStmt::create(db,
         table,
         &table_map,
-        inner_join_conditions[i].release(),
+        condition.release(),
         filter_stmt);
       if (rc != RC::SUCCESS) {
         LOG_WARN("cannot construct filter stmt");
         return rc;
       }
 
-      auto &expr = filter_stmt->get_expr();
-      ExpressionBinder expression_binder(binder_context);
-      if (expr) {
-        vector<unique_ptr<Expression>> filter_expressions;
-        auto                           l  = expr->Clone();
-        RC                             rc = expression_binder.bind_expression(l, filter_expressions);
-        if (OB_FAIL(rc)) {
-          LOG_INFO("bind expression failed. rc=%s", strrc(rc));
-          return rc;
-        }
-        ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
-        filter_stmt->set_expr(std::move(filter_expressions[0]));
-      }
       join_conditions.insert({table, std::unique_ptr<FilterStmt>(filter_stmt)});
     }
   }
@@ -126,7 +148,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   
   for (unique_ptr<Expression> &expression : select_sql.expressions) {
     // 多表联查的时候，project 算子应该输出 table.field
-    RC rc = expression_binder.bind_expression(expression, bound_expressions, mutil_tables);
+    RC rc = expression_binder.bind_expression(expression, bound_expressions, mutil_tables, tables.empty() ? nullptr : tables[0]);
     if (OB_FAIL(rc)) {
       LOG_INFO("bind expression failed. rc=%s", strrc(rc));
       return rc;
@@ -163,6 +185,12 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
 
   assert(order_by_stmt->order_by_ops.size() == order_by_stmt->order_by_expressions.size());
 
+  // limit clause
+  std::unique_ptr<LimitStmt> limit_stmt = nullptr;
+  if (select_sql.limit) {
+    limit_stmt = std::make_unique<LimitStmt>(select_sql.limit->number);
+  }
+
   Table *default_table = nullptr;
   if (tables.size() == 1) {
     default_table = tables[0];
@@ -186,6 +214,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   select_stmt->group_by_.swap(group_by_expressions);
   select_stmt->having_filter_stmt_ = having_filter_stmt;
   select_stmt->order_by_.swap(order_by_stmt);
+  select_stmt->limit_ = std::move(limit_stmt);
   select_stmt->join_conditions_.swap(join_conditions);
   stmt                      = select_stmt;
   return RC::SUCCESS;

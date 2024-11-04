@@ -36,6 +36,7 @@ struct RelAttrSqlNode
 {
   std::string relation_name;   ///< relation name (may be NULL) 表名
   std::string attribute_name;  ///< attribute name              属性名
+  std::string attribute_alias;  ///< attribute alias            属性别名           
 };
 
 /**
@@ -103,6 +104,10 @@ struct OrderBySqlNode
   OrderOp order_op;
 };
 
+struct LimitSqlNode
+{
+  int number;
+};
 
 /**
  * @brief 描述一个inner join on 单元
@@ -111,6 +116,7 @@ struct OrderBySqlNode
 struct InnerJoinUnit
 {
   std::string                   relation;  ///< relation to join
+  std::string                   relation_alias; ///< relation alias
   std::unique_ptr<Expression>   condition; ///< join conditions
 };
 
@@ -147,6 +153,7 @@ struct SelectSqlNode
   std::vector<std::unique_ptr<Expression>> group_by;     ///< group by clause
   std::unique_ptr<Expression>              having_conditions; ///< having expresssions
   std::vector<std::unique_ptr<OrderBySqlNode>> order_by; ///< order by clause
+  std::unique_ptr<LimitSqlNode> limit;                 ///< limit clause
   std::unique_ptr<InnerJoinSqlNode>        inner_join;   ///< inner join clause
 };
 
@@ -177,6 +184,7 @@ struct InsertSqlNode
 struct DeleteSqlNode
 {
   std::string                   relation_name;  ///< Relation to delete from
+  std::string                   relation_alias;  ///< Relation alias
   Expression                   *conditions;     ///< 查询条件
   // std::vector<ConditionSqlNode> conditions;
 };
@@ -188,8 +196,9 @@ struct DeleteSqlNode
 struct UpdateSqlNode
 {
   std::string                   relation_name;   ///< Relation to update
+  std::string                   relation_alias;  ///< Relation alias
   std::vector<std::string>      attribute_name;  ///< 要修改的属性
-  std::vector<Value>            value;           ///< 要更新的值
+  std::vector<Expression*>      value;           ///< 要更新的值
   Expression                   *conditions;      ///< 查询条件
   // std::vector<ConditionSqlNode> conditions;
 };
@@ -201,7 +210,7 @@ struct UpdateSqlNode
 struct KeyValueList
 {
   std::vector<std::string> attrs; ///< 要修改的属性
-  std::vector<Value> values;      ///< 要更新的值
+  std::vector<Expression*> values;      ///< 要更新的值
 };
 
 /**
@@ -215,6 +224,8 @@ struct AttrInfoSqlNode
   std::string name;    ///< Attribute name
   size_t      length;  ///< Length of attribute
   bool        nullable;///< can be set null if true (default: true)
+  bool        high_vector;  ///< is high dim vector
+  size_t      dim;  ///< number of vector's dim
 };
 
 /**
@@ -238,6 +249,15 @@ struct DropTableSqlNode
   std::string relation_name;  ///< 要删除的表名
 };
 
+// vector index with 语句
+struct VectorIndexWith
+{
+  int func_type;
+  int type;
+  int lists;
+  int probes;
+};
+
 /**
  * @brief 描述一个create index语句
  * @ingroup SQLParser
@@ -250,6 +270,7 @@ struct CreateIndexSqlNode
   std::string relation_name;   ///< Relation name
   std::vector<std::string> attr_names;    ///< Attribute names
   bool unique;                 ///< unique index
+  std::unique_ptr<VectorIndexWith> with;        ///< 只有当 create vector index 的时候使用
 };
 
 /**

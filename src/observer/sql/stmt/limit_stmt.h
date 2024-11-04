@@ -9,10 +9,24 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details. */
 
 //
-// Created by yqzhang4480 on 2024/10/18.
+// Created by Wangyunlai on 2022/12/27.
 //
 
-#include "sql/operator/update_logical_operator.h"
+#pragma once
 
-UpdateLogicalOperator::UpdateLogicalOperator(Table *table, std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>>&& values)
-    : table_(table), values_(std::move(values)) {}
+#include "sql/stmt/stmt.h"
+
+/**
+ * @brief limit 语句
+ * @ingroup Statement
+ */
+class LimitStmt : public Stmt
+{
+public:
+  explicit LimitStmt(int num) : num_(num) {}
+  virtual ~LimitStmt() = default;
+
+  StmtType type() const override { return StmtType::LIMIT; }
+
+  int num_;
+};

@@ -24,6 +24,7 @@ See the Mulan PSL v2 for more details. */
 class Record;
 class TupleCellSpec;
 class Trx;
+extern std::map<string, std::unique_ptr<Tuple>> g_table_tuple_map;
 
 /**
  * @brief 物理算子
@@ -41,6 +42,7 @@ enum class PhysicalOperatorType
   TABLE_SCAN_VEC,
   INDEX_SCAN,
   VIEW_SCAN,
+  VECTOR_INDEX_SCAN,
   NESTED_LOOP_JOIN,
   EXPLAIN,
   PREDICATE,
@@ -58,6 +60,7 @@ enum class PhysicalOperatorType
   EXPR_VEC,
   UPDATE,
   ORDER_BY,
+  LIMIT,
 };
 
 /**

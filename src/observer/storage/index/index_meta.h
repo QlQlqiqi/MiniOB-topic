@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "common/rc.h"
 #include "common/lang/string.h"
+#include "sql/parser/parse_defs.h"
 
 class TableMeta;
 class FieldMeta;
@@ -35,15 +36,41 @@ class IndexMeta
 public:
   IndexMeta() = default;
 
-  RC init(const char *name, const std::vector<const FieldMeta*> &fields, const bool unique);
+  RC init(const char *name, const std::vector<const FieldMeta *> &fields, const bool unique,
+      const std::unique_ptr<VectorIndexWith> &with);
 
 public:
   const char *name() const;
   const std::vector<std::string> &field() const;
   std::string to_string() const;
   const bool unique() const;
+  bool is_ivfflat() const { return with_ && with_->type == 1; }
+  const std::unique_ptr<VectorIndexWith> &with() const { return with_; }
 
   void desc(ostream &os) const;
+
+  IndexMeta(const IndexMeta &index_meta)
+  {
+    name_   = index_meta.name_;
+    field_  = index_meta.field_;
+    unique_ = index_meta.unique_;
+    with_ = nullptr;
+    if (index_meta.with_) {
+      with_ = std::make_unique<VectorIndexWith>(*index_meta.with_);
+    }
+  }
+
+  IndexMeta &operator=(const IndexMeta &index_meta)
+  {
+    name_   = index_meta.name_;
+    field_  = index_meta.field_;
+    unique_ = index_meta.unique_;
+    with_ = nullptr;
+    if (index_meta.with_) {
+      with_ = std::make_unique<VectorIndexWith>(*index_meta.with_);
+    }
+    return *this;
+  }
 
 public:
   void      to_json(Json::Value &json_value) const;
@@ -53,4 +80,5 @@ protected:
   string name_;   // index's name
   std::vector<std::string> field_;  // field's name
   bool unique_;
+  std::unique_ptr<VectorIndexWith> with_;
 };

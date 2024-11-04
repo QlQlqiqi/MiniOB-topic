@@ -31,11 +31,11 @@ class FieldMeta
 public:
   FieldMeta();
   FieldMeta(const char *name, AttrType attr_type, int attr_offset, int attr_len, bool visible, int field_id,
-      bool attr_nullable = true);
+      bool attr_nullable = true, bool high_vector = false, int dim = 0);
   ~FieldMeta() = default;
 
   RC init(const char *name, AttrType attr_type, int attr_offset, int attr_len, bool visible, int field_id,
-      bool attr_nullable = true);
+      bool attr_nullable = true, bool high_vector = false, int dim = 0);
 
 public:
   const char *name() const;
@@ -44,7 +44,10 @@ public:
   int         len() const;
   bool        visible() const;
   int         field_id() const;
+  bool is_vector() const;
   bool        nullable() const;
+  bool        high_vector() const;
+  int         dim() const;
 
   void set_name(const string& new_name);
 
@@ -54,7 +57,6 @@ public:
 public:
   void      to_json(Json::Value &json_value) const;
   static RC from_json(const Json::Value &json_value, FieldMeta &field);
-
 protected:
   string   name_;
   AttrType attr_type_;
@@ -63,4 +65,9 @@ protected:
   bool     visible_;
   int      field_id_;
   bool     attr_nullable_;
+  // 对于高维 vector，record 中只存储 offset 和 length，
+  // 类似 text，将具体内容存储在 text 溢出页中
+  bool high_vector_;
+  // vector 的维度数量
+  int dim_;
 };
