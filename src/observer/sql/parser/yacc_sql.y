@@ -119,6 +119,12 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         STRING_T
         FLOAT_T
         VECTOR_T
+        WITH_T
+        DISTANCE_T
+        TYPE_T
+        IVFFLAT_T
+        LISTS_T
+        PROBES_T
         TEXT_T
         IS
         NOT
@@ -162,6 +168,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
         VECTORS
         QUOTE
         UNIQUE
+        LIMIT
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -177,6 +184,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
   std::vector<RelAttrSqlNode> *              rel_attr_list;
   std::vector<std::string> *                 relation_list;
   std::vector<std::unique_ptr<OrderBySqlNode>>* order_by_list;
+  LimitSqlNode *                             limit;
   OrderBySqlNode*                            order_unit;
   OrderOp                                    order_op;
   InnerJoinUnit*                             inner_join_unit;
@@ -188,6 +196,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
   std::vector<double> *                      double_list;
   double                                     float_number;
   KeyValueList *                             kv_list;
+  VectorIndexWith *                          vector_index_with;
 }
 
 %token <number> NUMBER
@@ -199,10 +208,13 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 
 /** type 定义了各种解析后的结果输出的是什么类型。类型对应了 union 中的定义的成员变量名称 **/
 %type <float_number>       float_number
+%type <vector_index_with>   vector_index_with
+%type <limit>               opt_limit
 %type <double_list>         double_list
 %type <number>              type
 %type <expression>          condition
 %type <value>               value
+%type <number>              vector_func_type
 %type <number>              number
 %type <string>              relation
 %type <string>              alias;
@@ -367,7 +379,41 @@ create_index_stmt:    /*create index 语句的语法解析树*/
       free($8);
       delete $9;
     }
+    | CREATE VECTOR_T INDEX ID ON ID LBRACE ID idx_col_list RBRACE vector_index_with
+    {
+      $$ = new ParsedSqlNode(SCF_CREATE_INDEX);
+      CreateIndexSqlNode &create_index = $$->create_index;
+      create_index.index_name = $4;
+      create_index.relation_name = $6;
+      create_index.unique = false;
+      create_index.attr_names.swap(*$9);
+      create_index.attr_names.emplace_back($8);
+      std::reverse(create_index.attr_names.begin(), create_index.attr_names.end());
+      create_index.with = nullptr;
+      if($11) {
+        create_index.with = std::unique_ptr<VectorIndexWith>($11);
+      }
+      free($4);
+      free($6);
+      free($8);
+      delete $9;
+    }
     ;
+
+vector_index_with:
+    WITH_T LBRACE TYPE_T EQ IVFFLAT_T COMMA DISTANCE_T EQ vector_func_type COMMA LISTS_T EQ number COMMA PROBES_T EQ number RBRACE
+    {
+      VectorIndexWith *with = new VectorIndexWith();
+      with->func_type = $9;
+      // type 只有 ivfflat
+      with->type = 1;
+      with->lists = $13;
+      with->probes = $17;
+
+      $$ = with;
+    }
+    ;
+
 opt_unique:
     /* empty */
     {
@@ -688,7 +734,7 @@ update_kv_list:
     ;
 
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT expression_list FROM rel_list inner_join_list where group_by opt_having order_by
+    SELECT expression_list FROM rel_list inner_join_list where group_by opt_having order_by opt_limit
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -726,6 +772,10 @@ select_stmt:        /*  select 语句的语法解析树*/
       if($9 != nullptr){
         $$->selection.order_by.swap(*$9);
         delete $9;
+      }
+
+      if($10 != nullptr){
+        $$->selection.limit = std::unique_ptr<LimitSqlNode>($10);
       }
     }
     | SELECT expression_list
@@ -829,14 +879,8 @@ expression:
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
-    | L2_DISTANCE LBRACE expression COMMA expression RBRACE {
-      $$ = create_function_expression(FunctionExpr::Type::L2_DISTANCE, sql_string, $3, $5, &@$);
-    }
-    | COSINE_DISTANCE LBRACE expression COMMA expression RBRACE {
-      $$ = create_function_expression(FunctionExpr::Type::COSINE_DISTANCE, sql_string, $3, $5, &@$);
-    }
-    | INNER_PRODUCT LBRACE expression COMMA expression RBRACE {
-      $$ = create_function_expression(FunctionExpr::Type::INNER_PRODUCT, sql_string, $3, $5, &@$);
+    | vector_func_type LBRACE expression COMMA expression RBRACE {
+      $$ = create_function_expression((FunctionExpr::Type)$1, sql_string, $3, $5, &@$);
     }
     | aggregate_expr {
       $$ = $1;
@@ -846,6 +890,18 @@ expression:
     }
     | '*' {
       $$ = new StarExpr();
+    }
+    ;
+
+vector_func_type: 
+    L2_DISTANCE {
+      $$ = static_cast<int>(FunctionExpr::Type::L2_DISTANCE);
+    }
+    | COSINE_DISTANCE {
+      $$ = static_cast<int>(FunctionExpr::Type::COSINE_DISTANCE);
+    }
+    | INNER_PRODUCT {
+      $$ = static_cast<int>(FunctionExpr::Type::INNER_PRODUCT);
     }
     ;
 
@@ -880,12 +936,18 @@ rel_attr:
       $$->attribute_name = $1;
       free($1);
     }
-    | ID DOT ID{
+    | ID DOT ID {
       $$ = new RelAttrSqlNode;
       $$->relation_name  = $1;
       $$->attribute_name = $3;
       free($1);
       free($3);
+    }
+    | ID DOT '*' {
+      $$ = new RelAttrSqlNode;
+      $$->relation_name  = $1;
+      $$->attribute_name = "*";
+      free($1);
     }
     ;
 
@@ -1033,6 +1095,7 @@ opt_having:
   {
     $$ = $2;
   }
+  ;
 
 // your code here
 order_by:
@@ -1047,6 +1110,18 @@ order_by:
     }
     ;
 
+opt_limit:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | LIMIT number
+    {
+      $$ = new LimitSqlNode();
+      $$->number = $2;
+    }
+    ;
+
 order_by_list:
     order_unit
     {
@@ -1058,6 +1133,7 @@ order_by_list:
       $$ = $3;
       $$->emplace_back($1);
     }
+    ;
 
 order_unit:
     rel_attr order_op
@@ -1068,6 +1144,13 @@ order_unit:
       $$->order_op = $2;
       delete $1;
     }
+    | vector_func_type LBRACE expression COMMA expression RBRACE order_op {
+      $$ = new OrderBySqlNode;
+      $$->unbound_field = std::unique_ptr<Expression>(create_function_expression((FunctionExpr::Type)$1, sql_string, $3, $5, &@$));
+      $$->order_op = $7;
+    }
+    ;
+
 order_op:
     {
       $$ = OrderOp::ASC;
@@ -1080,6 +1163,7 @@ order_op:
     {
       $$ = OrderOp::DESC;
     }
+    ;
 
 load_data_stmt:
     LOAD DATA INFILE SSS INTO TABLE ID 
