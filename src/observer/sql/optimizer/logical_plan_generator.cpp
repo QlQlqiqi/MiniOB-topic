@@ -20,6 +20,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/delete_logical_operator.h"
 #include "sql/operator/explain_logical_operator.h"
 #include "sql/operator/insert_logical_operator.h"
+#include "sql/operator/limit_logical_operator.h"
 #include "sql/operator/update_logical_operator.h"
 #include "sql/operator/join_logical_operator.h"
 #include "sql/operator/logical_operator.h"
@@ -30,6 +31,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/order_by_logical_operator.h"
 
 
+#include "sql/operator/vector_index_scan_logical_operator.h"
 #include "sql/stmt/calc_stmt.h"
 #include "sql/stmt/delete_stmt.h"
 #include "sql/stmt/explain_stmt.h"
@@ -40,6 +42,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/stmt.h"
 
 #include "sql/expr/expression_iterator.h"
+#include "storage/index/ivfflat_index.h"
 
 using namespace std;
 using namespace common;
@@ -135,6 +138,65 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
     }
   }
 
+  // limit clause
+  std::unique_ptr<LogicalOperator> limit_oper;
+  if (select_stmt->limit()) {
+    rc = create_plan(select_stmt->limit().get(), limit_oper);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to create limit logical plan. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+
+  unique_ptr<LogicalOperator> order_by_oper;
+  rc = create_order_by_plan(select_stmt, order_by_oper);
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to create group by logical plan. rc=%s", strrc(rc));
+    return rc;
+  }
+
+  // 对于向量索引，需要使用 ivafflat 将其重写，详细可参考
+  // @see: { https://oceanbase.github.io/miniob/game/miniob-vectordb/#_7 }
+  bool rewrited = false;
+  std::unique_ptr<VectorIndexScanLogicalOperator> vec_index_scan_oper;
+  // 1. 有 limit 和 order by
+  if (limit_oper && order_by_oper) {
+    // 2. order by expr 只有 1 哥，且为 vector_func
+    auto &order_by_exprs = order_by_oper->expressions();
+    if (order_by_exprs.size() == 1 && order_by_exprs[0]->type() == ExprType::FUNCTION) {
+      auto order_by_expr = static_cast<FunctionExpr *>(order_by_exprs[0].get());
+      // 3. order by 的左右 expr 一个是 field，一个是 vector
+      auto &left  = order_by_expr->left();
+      auto &right = order_by_expr->right();
+      if (left && right &&
+          ((left->type() == ExprType::FIELD && right->type() == ExprType::VALUE) ||
+              (left->type() == ExprType::VALUE && right->type() == ExprType::FIELD))) {
+        // 4. 在这个 field 上有对应的 ivafflat index
+        auto field_name =
+            static_cast<FieldExpr *>(left->type() == ExprType::FIELD ? left.get() : right.get())->field_name();
+        for (auto table : tables) {
+          for (auto index : table->indexes()) {
+            auto &index_meta = index->index_meta();
+            if (index_meta.is_ivfflat() && index_meta.field().size() == 1 && index_meta.field().at(0) == field_name) {
+              auto ivafflat_index = dynamic_cast<const IvfflatIndex *>(index);
+              if (ivafflat_index != nullptr) {
+                // 5. 将 limit、order by 改为 vector index scan
+                vec_index_scan_oper = std::make_unique<VectorIndexScanLogicalOperator>(table,
+                    index,
+                    &index->field_metas()[0],
+                    static_cast<OrderByLogicalOperator *>(order_by_oper.get())->order_ops()[0],
+                    static_cast<LimitLogicalOperator *>(limit_oper.get())->num_);
+                table_oper          = std::move(vec_index_scan_oper);
+                rewrited = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   //where operator
   unique_ptr<LogicalOperator> predicate_oper;
   rc = create_plan(select_stmt->filter_stmt(), predicate_oper);
@@ -184,19 +246,19 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
     last_oper = &having_predicate_oper;
   }
 
-
-  unique_ptr<LogicalOperator> order_by_oper;
-  rc = create_order_by_plan(select_stmt, order_by_oper);
-  if (OB_FAIL(rc)) {
-    LOG_WARN("failed to create group by logical plan. rc=%s", strrc(rc));
-    return rc;
-  }
-
-  if (order_by_oper) {
+  if (order_by_oper && !rewrited) {
     if (*last_oper) {
       order_by_oper->add_child(std::move(*last_oper));
     }
     last_oper = &order_by_oper;
+  }
+
+  // limit clause
+  if (limit_oper && !rewrited) {
+    if (*last_oper) {
+      limit_oper->add_child(std::move(*last_oper));
+    }
+    last_oper = &limit_oper;
   }
 
   auto project_oper = make_unique<ProjectLogicalOperator>(std::move(select_stmt->query_expressions()));
@@ -222,6 +284,16 @@ RC LogicalPlanGenerator::create_plan(FilterStmt *filter_stmt, unique_ptr<Logical
 
   }
   logical_operator = std::move(pre_oper);
+  return rc;
+}
+
+RC LogicalPlanGenerator::create_plan(LimitStmt *limit_stmt, unique_ptr<LogicalOperator> &logical_operator)
+{
+  RC rc = RC::SUCCESS;
+
+  auto limit_oper = std::make_unique<LimitLogicalOperator>(limit_stmt->num_);
+
+  logical_operator = std::move(limit_oper);
   return rc;
 }
 
@@ -401,7 +473,6 @@ RC LogicalPlanGenerator::create_group_by_plan(SelectStmt *select_stmt, unique_pt
 
 RC LogicalPlanGenerator::create_order_by_plan(SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator){
   auto &order_stmt = select_stmt->order_by();
-  vector<Expression *> order_expressions;
   if(order_stmt == nullptr || order_stmt->order_by_ops.empty()){
     return RC::SUCCESS;
   }

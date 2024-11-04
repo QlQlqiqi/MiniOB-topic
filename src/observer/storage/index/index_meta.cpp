@@ -24,8 +24,13 @@ const static Json::StaticString FIELD_NAME("name");
 const static Json::StaticString FIELD_UNIQUE("unique");
 const static Json::StaticString FIELD_FIELD_NUM("field_num");
 const static Json::StaticString FIELD_FIELD_NAME("field_name");
+const static Json::StaticString WITH_FUNC_TYPE("with_func_type");
+const static Json::StaticString WITH_TYPE("with_type");
+const static Json::StaticString WITH_LISTS("with_lists");
+const static Json::StaticString WITH_PROBES("with_probes");
 
-RC IndexMeta::init(const char *name, const std::vector<const FieldMeta*> &fields, const bool unique)
+RC IndexMeta::init(const char *name, const std::vector<const FieldMeta *> &fields, const bool unique,
+    const std::unique_ptr<VectorIndexWith> &with)
 {
   if (common::is_blank(name)) {
     LOG_ERROR("Failed to init index, name is empty.");
@@ -37,6 +42,12 @@ RC IndexMeta::init(const char *name, const std::vector<const FieldMeta*> &fields
     field_.emplace_back(field->name());
   }
   unique_ = unique;
+
+  if (with) {
+    with_ = std::make_unique<VectorIndexWith>(*with);
+  } else {
+    with_ = std::make_unique<VectorIndexWith>();
+  }
   return RC::SUCCESS;
 }
 
@@ -50,6 +61,10 @@ void IndexMeta::to_json(Json::Value &json_value) const
     fields[i] = field_[i];
   }
   json_value[FIELD_FIELD_NAME] = std::move(fields);
+  json_value[WITH_FUNC_TYPE]   = with_ ? with_->func_type : 0;
+  json_value[WITH_TYPE]        = with_ ? with_->type : 0;
+  json_value[WITH_LISTS]       = with_ ? with_->lists : 0;
+  json_value[WITH_PROBES]      = with_ ? with_->probes : 0;
 }
 
 RC IndexMeta::from_json(const TableMeta &table, const Json::Value &json_value, IndexMeta &index)
@@ -58,6 +73,10 @@ RC IndexMeta::from_json(const TableMeta &table, const Json::Value &json_value, I
   const Json::Value &unique = json_value[FIELD_UNIQUE];
   const Json::Value &field_num = json_value[FIELD_FIELD_NUM];
   const Json::Value &field_value = json_value[FIELD_FIELD_NAME];
+  const Json::Value &func_type_value = json_value[WITH_FUNC_TYPE];
+  const Json::Value &type_value = json_value[WITH_TYPE];
+  const Json::Value &lists_value = json_value[WITH_LISTS];
+  const Json::Value &probes_value = json_value[WITH_PROBES];
   if (!name_value.isString()) {
     LOG_ERROR("Index name is not a string. json value=%s", name_value.toStyledString().c_str());
     return RC::INTERNAL;
@@ -102,7 +121,18 @@ RC IndexMeta::from_json(const TableMeta &table, const Json::Value &json_value, I
     fields.emplace_back(field);
   }
 
-  return index.init(name_value.asCString(), fields, unique.asBool());
+  if (!func_type_value.isInt() && !type_value.isInt() && !lists_value.isInt() && !probes_value.isInt()) {
+    LOG_ERROR("with must be integer.");
+    return RC::INTERNAL;
+  }
+
+  auto with       = std::make_unique<VectorIndexWith>();
+  with->func_type = func_type_value.asInt();
+  with->type      = type_value.asInt();
+  with->lists     = lists_value.asInt();
+  with->probes    = probes_value.asInt();
+
+  return index.init(name_value.asCString(), fields, unique.asBool(), with);
 }
 
 const char *IndexMeta::name() const { return name_.c_str(); }
@@ -123,6 +153,10 @@ std::string IndexMeta::to_string() const
     fields += " ";
   }
   s << "index name=" << name_ << "unique" << unique_ << ", field=" << fields;
+  if (with_) {
+    s << "func type=" << with_->func_type << "type=" << with_->type << "lists=" << with_->lists
+      << "probes=" << with_->probes;
+  }
   return s.str();
 }
 

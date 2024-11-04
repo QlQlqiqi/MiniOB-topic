@@ -166,6 +166,23 @@ int operator()(const char *v1, const char *v2, const std::shared_ptr<FieldMeta> 
           }
           break;
         }
+        case AttrType::VECTORS: {
+          // TODO(qiqi): 事实上其他类型也可以向这样用 value 来比
+          Value left;
+          left.set_type(attr_type);
+          left.set_data(v1 + offset, attr_length);
+          Value right;
+          right.set_type(attr_type);
+          right.set_data(v2 + offset, attr_length);
+          auto res = left.compare(right);
+          switch (res) {
+            case ValCmpRes::LESS: cmp_res = -1; break;
+            case ValCmpRes::EQUAL: cmp_res = 0; break;
+            case ValCmpRes::GREAT: cmp_res = 1; break;
+            default: ASSERT(false, "error compare result. %d", res);
+          }
+          break;
+        }
         default: {
           ASSERT(false, "unknown attr type. %d", attr_type);
           return 0;

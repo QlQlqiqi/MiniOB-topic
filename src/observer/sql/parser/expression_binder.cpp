@@ -131,6 +131,12 @@ RC ExpressionBinder::bind_star_expression(
 
   auto star_expr = static_cast<StarExpr *>(expr.get());
 
+  if (!star_expr->alias().empty())
+  {
+    LOG_WARN("zyq: it is invalid to give an alias for a star field");
+    return RC::INVALID_ARGUMENT;
+  }
+
   vector<Table *> tables_to_wildcard;
 
   const char *table_name = star_expr->table_name();
@@ -188,6 +194,11 @@ RC ExpressionBinder::bind_unbound_field_expression(
   }
 
   if (0 == strcmp(field_name, "*")) {
+    if (!unbound_field_expr->alias().empty())
+    {
+      LOG_WARN("zyq: it is invalid to give an alias for a star field");
+      return RC::INVALID_ARGUMENT;
+    }
     wildcard_fields(table, bound_expressions, mutil_tables);
   } else {
     const FieldMeta *field_meta = table->table_meta().field(field_name);

@@ -30,9 +30,17 @@ class FieldMeta;
 class CreateIndexStmt : public Stmt
 {
 public:
-  CreateIndexStmt(Table *table, std::vector<const FieldMeta *> &field_meta, const std::string &index_name, const bool unique)
+  CreateIndexStmt(Table *table, std::vector<const FieldMeta *> &field_meta, const std::string &index_name,
+      const bool unique, const std::unique_ptr<VectorIndexWith> &with = nullptr)
       : table_(table), field_meta_(field_meta), index_name_(index_name), unique_(unique)
-  {}
+  {
+    with_ = nullptr;
+    if (with) {
+      // gram.y 中固化了 type 为 1
+      ASSERT(with->type == 1, "type must be 1 when creating ivfflat index");
+      with_ = std::make_unique<VectorIndexWith>(*with);
+    }
+  }
 
   virtual ~CreateIndexStmt() = default;
 
@@ -42,6 +50,8 @@ public:
   const std::vector<const FieldMeta *> &field_meta() const { return field_meta_; }
   const std::string &index_name() const { return index_name_; }
   bool unique() const { return unique_; }
+  bool is_ivfflat() const { return with_ != nullptr && with_->type == 1; }
+  const std::unique_ptr<VectorIndexWith> &with() const { return with_; }
 
 public:
   static RC create(Db *db, const CreateIndexSqlNode &create_index, Stmt *&stmt);
@@ -51,4 +61,5 @@ private:
   std::vector<const FieldMeta*> field_meta_;
   std::string      index_name_;
   bool unique_;
+  std::unique_ptr<VectorIndexWith> with_;
 };

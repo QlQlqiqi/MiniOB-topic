@@ -86,7 +86,10 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
     table_map.insert({table_name, table});
 
     if(!table_alias.empty()){
-      binder_context.add_alias(table_alias, table);
+      rc = binder_context.add_alias(table_alias, table);
+      if (OB_FAIL(rc)) {
+        return rc;
+      }
       insert_alias_into_table_map(table_alias, table, table_map);
     }
   }
@@ -117,7 +120,10 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
       table_map.insert({relation_name, table});
 
       if(!relation_alias.empty()){
-        binder_context.add_alias(relation_alias, table);
+        rc = binder_context.add_alias(relation_alias, table);
+        if (OB_FAIL(rc)) {
+          return rc;
+        }
         insert_alias_into_table_map(relation_alias, table, table_map);
       }
 
@@ -181,6 +187,12 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
 
   assert(order_by_stmt->order_by_ops.size() == order_by_stmt->order_by_expressions.size());
 
+  // limit clause
+  std::unique_ptr<LimitStmt> limit_stmt = nullptr;
+  if (select_sql.limit) {
+    limit_stmt = std::make_unique<LimitStmt>(select_sql.limit->number);
+  }
+
   Table *default_table = nullptr;
   if (tables.size() == 1) {
     default_table = tables[0];
@@ -204,6 +216,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
   select_stmt->group_by_.swap(group_by_expressions);
   select_stmt->having_filter_stmt_ = having_filter_stmt;
   select_stmt->order_by_.swap(order_by_stmt);
+  select_stmt->limit_ = std::move(limit_stmt);
   select_stmt->join_conditions_.swap(join_conditions);
   stmt                      = select_stmt;
   return RC::SUCCESS;

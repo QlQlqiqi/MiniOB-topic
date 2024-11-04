@@ -104,6 +104,10 @@ struct OrderBySqlNode
   OrderOp order_op;
 };
 
+struct LimitSqlNode
+{
+  int number;
+};
 
 /**
  * @brief 描述一个inner join on 单元
@@ -149,6 +153,7 @@ struct SelectSqlNode
   std::vector<std::unique_ptr<Expression>> group_by;     ///< group by clause
   std::unique_ptr<Expression>              having_conditions; ///< having expresssions
   std::vector<std::unique_ptr<OrderBySqlNode>> order_by; ///< order by clause
+  std::unique_ptr<LimitSqlNode> limit;                 ///< limit clause
   std::unique_ptr<InnerJoinSqlNode>        inner_join;   ///< inner join clause
 };
 
@@ -244,6 +249,15 @@ struct DropTableSqlNode
   std::string relation_name;  ///< 要删除的表名
 };
 
+// vector index with 语句
+struct VectorIndexWith
+{
+  int func_type;
+  int type;
+  int lists;
+  int probes;
+};
+
 /**
  * @brief 描述一个create index语句
  * @ingroup SQLParser
@@ -256,6 +270,7 @@ struct CreateIndexSqlNode
   std::string relation_name;   ///< Relation name
   std::vector<std::string> attr_names;    ///< Attribute names
   bool unique;                 ///< unique index
+  std::unique_ptr<VectorIndexWith> with;        ///< 只有当 create vector index 的时候使用
 };
 
 /**
