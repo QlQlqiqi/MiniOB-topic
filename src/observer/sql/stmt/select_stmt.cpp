@@ -36,7 +36,7 @@ auto insert_alias_into_table_map (const std::string& alias, Table* table, unorde
   }
 }
 
-RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
+RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unordered_map<std::string, Table *> parents)
 {
   if (nullptr == db) {
     LOG_WARN("invalid argument. db is null");
@@ -48,6 +48,12 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   // collect tables in `from` statement
   vector<Table *>                tables;
   unordered_map<string, Table *> table_map;
+
+  for (auto& [name, table] : parents) {
+    binder_context.add_table(table);
+    // 处理子查询时，这里区分上级查询和本级查询涉及的表，上级查询不做 tables.push_back(table);。
+    table_map.insert({name, table});
+  }
 
   auto check_and_collect_table = [&](const std::string& relation, Table **table){
     const char *table_name = relation.c_str();
@@ -138,7 +144,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt)
   
   for (unique_ptr<Expression> &expression : select_sql.expressions) {
     // 多表联查的时候，project 算子应该输出 table.field
-    RC rc = expression_binder.bind_expression(expression, bound_expressions, mutil_tables);
+    RC rc = expression_binder.bind_expression(expression, bound_expressions, mutil_tables, tables.empty() ? nullptr : tables[0]);
     if (OB_FAIL(rc)) {
       LOG_INFO("bind expression failed. rc=%s", strrc(rc));
       return rc;

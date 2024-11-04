@@ -20,6 +20,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/select_stmt.h"
 #include "sql/operator/logical_operator.h"
 #include "sql/operator/physical_operator.h"
+#include "sql/optimizer/logical_plan_generator.h"
+#include "sql/optimizer/physical_plan_generator.h"
 #include <regex>
 
 using namespace std;
@@ -48,7 +50,11 @@ static bool str_like(const Value &left, const Value &right)
 
 RC FieldExpr::get_value(const Tuple &tuple, Value &value) const
 {
-  return tuple.find_cell(TupleCellSpec(table_name(), field_name()), value);
+  RC rc = tuple.find_cell(TupleCellSpec(table_name(), field_name()), value);
+  if (rc == RC::NOTFOUND && g_table_tuple_map.contains(table_name())) {
+    return g_table_tuple_map.at(table_name())->find_cell(TupleCellSpec(table_name(), field_name()), value);
+  }
+  return rc;
 }
 
 bool FieldExpr::equal(const Expression &other) const
@@ -975,8 +981,15 @@ RC SubQueryExpr::get_value_with_eof(const Tuple &tuple, Value &value) const
     }
   }
 
-  if (!is_open_) { _open(nullptr); }
-  RC rc = physical_oper_->next();
+  RC rc = RC::SUCCESS;
+  if (!is_open_) {
+    rc = _open(nullptr);
+    if (OB_FAIL(rc)) {
+      return rc;
+    }
+  }
+
+  rc = physical_oper_->next();
   if (OB_FAIL(rc))
   {
     cached_ |= (rc == RC::RECORD_EOF);
@@ -1000,12 +1013,28 @@ RC SubQueryExpr::get_value_with_eof(const Tuple &tuple, Value &value) const
 
 RC SubQueryExpr::_open(Trx* trx) const
 {
+  LogicalPlanGenerator lpg;
+  std::unique_ptr<LogicalOperator> sub_query_logi_oper;
+  if (RC rc = lpg.create(stmt_.get(), sub_query_logi_oper); RC::SUCCESS != rc) {
+    return rc;
+  }
+
+  PhysicalPlanGenerator ppg;
+  std::unique_ptr<PhysicalOperator> sub_query_phy_oper;
+  if (RC rc = ppg.create(*sub_query_logi_oper.get(), sub_query_phy_oper); RC::SUCCESS != rc) {
+    return rc;
+  }
+
+  logical_oper_ = std::move(sub_query_logi_oper);
+  physical_oper_ = std::move(sub_query_phy_oper);
+
   RC rc = physical_oper_->open(trx);
   if (OB_FAIL(rc))
   {
     LOG_WARN("sub query open failed");
     return rc;
   }
+  
   is_open_ = true;
   return rc;
 }
@@ -1013,7 +1042,3 @@ RC SubQueryExpr::_open(Trx* trx) const
 const std::shared_ptr<SelectSqlNode>    &SubQueryExpr::sql_node() const { return sql_node_; }
 void                                     SubQueryExpr::set_select_stmt(SelectStmt *stmt) const { stmt_.reset(stmt); }
 const std::shared_ptr<SelectStmt>       &SubQueryExpr::select_stmt() const { return stmt_; }
-void                                     SubQueryExpr::set_logical_oper(std::unique_ptr<LogicalOperator> &&oper) { logical_oper_ = std::move(oper); }
-const std::unique_ptr<LogicalOperator>  &SubQueryExpr::logical_oper() { return logical_oper_; }
-void                                     SubQueryExpr::set_physical_oper(std::unique_ptr<PhysicalOperator> &&oper) { physical_oper_ = std::move(oper); }
-const std::unique_ptr<PhysicalOperator> &SubQueryExpr::physical_oper() { return physical_oper_; }

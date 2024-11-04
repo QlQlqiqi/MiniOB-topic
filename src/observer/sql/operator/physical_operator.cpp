@@ -13,6 +13,7 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/operator/physical_operator.h"
+std::map<string, std::unique_ptr<Tuple>> g_table_tuple_map;
 
 std::string physical_operator_type_name(PhysicalOperatorType type)
 {

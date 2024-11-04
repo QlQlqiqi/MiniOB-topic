@@ -143,34 +143,10 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
   ValueExpr *value_expr = nullptr;
   // TODO(qiqi): 目前只是简单的 field = value 判断
   FieldExpr *field_expr = nullptr;
-  auto f               = [this](SubQueryExpr *sub_query_expr) {
-      std::unique_ptr<PhysicalOperator> sub_query_phy_oper;
-      if (RC rc = create(*sub_query_expr->logical_oper().get(), sub_query_phy_oper); RC::SUCCESS != rc) {
-        return rc;
-      }
-      sub_query_expr->set_physical_oper(std::move(sub_query_phy_oper));
-      return RC::SUCCESS;
-  };
-  RC rc2 = RC::SUCCESS;
 
   for (auto &expr : predicates) {
-    if (expr->type() == ExprType::SUBQUERY) {
-      auto sub_query_expr = static_cast<SubQueryExpr *>(expr.get());
-      rc2 = f(sub_query_expr);
-      if (OB_FAIL(rc2)) {
-        LOG_WARN("1: create sub query physical operator failed, rc2=%s", strrc(rc2));
-        return rc2;
-      }
-    }
     if (expr->type() == ExprType::COMPARISON) {
       auto comparison_expr = static_cast<ComparisonExpr *>(expr.get());
-
-      if (auto left  = comparison_expr->left().get();  left->type() == ExprType::SUBQUERY)  { rc2 = f(static_cast<SubQueryExpr *>(left)); }
-      if (auto right = comparison_expr->right().get(); right->type() == ExprType::SUBQUERY) { rc2 = f(static_cast<SubQueryExpr *>(right)); }
-      if (OB_FAIL(rc2)) {
-        LOG_WARN("2: create sub query physical operator failed, rc2=%s", strrc(rc2));
-        return rc2;
-      }
 
       // 简单处理，就找等值查询
       if (comparison_expr->comp() != EQUAL_TO) {
@@ -327,24 +303,6 @@ RC PhysicalPlanGenerator::create_plan(UpdateLogicalOperator &update_oper, unique
     rc = create(*child_oper, child_physical_oper);
     if (rc != RC::SUCCESS) {
       LOG_WARN("failed to create physical operator. rc=%s", strrc(rc));
-      return rc;
-    }
-  }
-
-  auto process_sub_query = [this](SubQueryExpr *sub_query_expr) {
-      std::unique_ptr<PhysicalOperator> sub_query_phy_oper;
-      if (RC rc = create(*sub_query_expr->logical_oper().get(), sub_query_phy_oper); RC::SUCCESS != rc) {
-        return rc;
-      }
-      sub_query_expr->set_physical_oper(std::move(sub_query_phy_oper));
-      return RC::SUCCESS;
-  };
-
-  for (auto& [_, value] : values) {
-    if (value->type() != ExprType::SUBQUERY) { continue; }
-    rc = process_sub_query(static_cast<SubQueryExpr*>(value.get()));
-    if (RC::SUCCESS != rc) {
-      LOG_WARN("2: create sub query logical operator failed");
       return rc;
     }
   }
