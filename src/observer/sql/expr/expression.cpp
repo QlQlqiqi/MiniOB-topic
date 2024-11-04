@@ -981,8 +981,15 @@ RC SubQueryExpr::get_value_with_eof(const Tuple &tuple, Value &value) const
     }
   }
 
-  if (!is_open_) { _open(nullptr); }
-  RC rc = physical_oper_->next();
+  RC rc = RC::SUCCESS;
+  if (!is_open_) {
+    rc = _open(nullptr);
+    if (OB_FAIL(rc)) {
+      return rc;
+    }
+  }
+
+  rc = physical_oper_->next();
   if (OB_FAIL(rc))
   {
     cached_ |= (rc == RC::RECORD_EOF);
