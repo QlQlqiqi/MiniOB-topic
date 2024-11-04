@@ -175,9 +175,10 @@ RC ExpressionBinder::bind_unbound_field_expression(
       } else {
         table = default_table;
       }
+    } else {
+      table = *(context_.query_tables().begin());
     }
 
-    table = *(context_.query_tables().begin());
   } else {
     table = context_.find_table(table_name);
     if (nullptr == table) {

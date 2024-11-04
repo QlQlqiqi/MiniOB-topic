@@ -144,7 +144,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
   
   for (unique_ptr<Expression> &expression : select_sql.expressions) {
     // 多表联查的时候，project 算子应该输出 table.field
-    RC rc = expression_binder.bind_expression(expression, bound_expressions, mutil_tables);
+    RC rc = expression_binder.bind_expression(expression, bound_expressions, mutil_tables, tables.empty() ? nullptr : tables[0]);
     if (OB_FAIL(rc)) {
       LOG_INFO("bind expression failed. rc=%s", strrc(rc));
       return rc;
