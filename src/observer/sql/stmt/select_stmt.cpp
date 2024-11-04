@@ -86,7 +86,10 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
     table_map.insert({table_name, table});
 
     if(!table_alias.empty()){
-      binder_context.add_alias(table_alias, table);
+      rc = binder_context.add_alias(table_alias, table);
+      if (OB_FAIL(rc)) {
+        return rc;
+      }
       insert_alias_into_table_map(table_alias, table, table_map);
     }
   }
@@ -117,7 +120,10 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
       table_map.insert({relation_name, table});
 
       if(!relation_alias.empty()){
-        binder_context.add_alias(relation_alias, table);
+        rc = binder_context.add_alias(relation_alias, table);
+        if (OB_FAIL(rc)) {
+          return rc;
+        }
         insert_alias_into_table_map(relation_alias, table, table_map);
       }
 
