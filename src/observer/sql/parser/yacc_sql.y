@@ -223,6 +223,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <comp>                comp_op
 %type <comp>                exists_op
 %type <rel_attr>            rel_attr
+%type <rel_attr_list>       rel_attr_list
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
 %type <relation_list>       idx_col_list
@@ -643,7 +644,23 @@ insert_stmt:        /*insert   语句的语法解析树*/
       delete $6;
       free($3);
     }
+    | INSERT INTO ID LBRACE rel_attr rel_attr_list RBRACE VALUES LBRACE value value_list  RBRACE
+    {
+      $$ = new ParsedSqlNode(SCF_INSERT);
+      $$->insertion.relation_name = $3;
+      delete $5;
+      delete $6;
+      if ($11 != nullptr) {
+        $$->insertion.values.swap(*$11);
+        delete $11;
+      }
+      $$->insertion.values.emplace_back(*$10);
+      std::reverse($$->insertion.values.begin(), $$->insertion.values.end());
+      delete $10;
+      free($3);
+    }
     ;
+    
 
 value_list:
     /* empty */
@@ -1004,6 +1021,23 @@ rel_attr:
       free($1);
     }
     ;
+rel_attr_list:
+    /* empty */
+    {
+      $$ = nullptr;
+    }
+    | COMMA rel_attr rel_attr_list
+    {
+      if ($3 != nullptr) {
+        $$ = $3;
+      } else {
+        $$ = new std::vector<RelAttrSqlNode>;
+      }
+      $$->emplace_back(*$2);
+      delete $2;
+    }
+    ;
+
 
 relation:
     ID {
