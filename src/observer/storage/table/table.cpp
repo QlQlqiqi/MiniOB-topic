@@ -808,19 +808,24 @@ RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, V
   rc = insert_entry_of_indexes(new_record.data(), new_record.rid());
   if (OB_FAIL(rc))
   {
-    delete_entry_of_indexes(new_record.data(), new_record.rid(), false);
+    // TODO(zyq): rollback
     return rc;
   }
 
   rc = record_handler_->update_record(new_record);
-
-  delete_entry_of_indexes(record.data(), record.rid(), false);
-
   if (OB_FAIL(rc))
   {
     LOG_WARN("zyq: update_record failed, rc=%s", strrc(rc));
     return rc;
   }
+
+  delete_entry_of_indexes(record.data(), record.rid(), false);
+  if (OB_FAIL(rc))
+  {
+    // TODO(zyq): rollback
+    return rc;
+  }
+
 
   return RC::SUCCESS;
 }

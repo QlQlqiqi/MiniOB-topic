@@ -137,6 +137,11 @@ RC UpdatePhysicalOperator::next()
     }
 
     rc = trx_->update_record(table_, record, raw_values);
+    if (OB_FAIL(rc))
+    {
+      LOG_INFO("update record failed");
+      return rc;
+    }
   }
 
   return RC::RECORD_EOF;
