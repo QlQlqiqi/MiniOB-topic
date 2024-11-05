@@ -5,7 +5,7 @@ std::string ViewScanPhysicalOperator::param() const { return std::string(); }
 
 RC ViewScanPhysicalOperator::open(Trx *trx)
 {
-  ASSERT(view_ != nullptr, "the view should be null");
+  ASSERT(view_ != nullptr, "the view should be not null");
   ASSERT(children_.size() == 1, "the children num should be 1");
   auto &child_oper  = children_[0];
   RC    rc          = RC::SUCCESS;

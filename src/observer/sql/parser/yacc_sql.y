@@ -251,6 +251,7 @@ Value *vec2val(const char *sql_string, YYLTYPE *llocp)
 %type <order_op>            order_op
 %type <sql_node>            calc_stmt
 %type <sql_node>            select_stmt
+%type <sql_node>            create_table_select_stmt
 %type <sql_node>            insert_stmt
 %type <sql_node>            update_stmt
 %type <sql_node>            delete_stmt
@@ -371,6 +372,36 @@ create_table_stmt:    /*create table 语句的语法解析树*/
         create_table.storage_format = $8;
         free($8);
       }
+    }
+    | CREATE TABLE ID create_table_select_stmt
+    {
+      $$ = new ParsedSqlNode(SCF_CREATE_TABLE);
+      CreateTableSqlNode &create_table = $$->create_table;
+      create_table.relation_name = $3;
+      free($3);
+      create_table.select_sql_node.reset($4);
+    }
+    |CREATE TABLE ID LBRACE attr_def attr_def_list RBRACE storage_format create_table_select_stmt
+    {
+      $$ = new ParsedSqlNode(SCF_CREATE_TABLE);
+      CreateTableSqlNode &create_table = $$->create_table;
+      create_table.relation_name = $3;
+      free($3);
+
+      std::vector<AttrInfoSqlNode> *src_attrs = $6;
+
+      if (src_attrs != nullptr) {
+        create_table.attr_infos.swap(*src_attrs);
+        delete src_attrs;
+      }
+      create_table.attr_infos.emplace_back(*$5);
+      std::reverse(create_table.attr_infos.begin(), create_table.attr_infos.end());
+      delete $5;
+      if ($8 != nullptr) {
+        create_table.storage_format = $8;
+        free($8);
+      } 
+      create_table.select_sql_node.reset($9);
     }
     ;
 
@@ -804,6 +835,17 @@ update_kv_list:
     }
     ;
 
+create_table_select_stmt:
+    AS select_stmt
+    {
+      $$ = $2;
+    }
+    | select_stmt
+    {
+      $$ = $1;
+    }
+    ;
+
 select_stmt:        /*  select 语句的语法解析树*/
     SELECT expression_list FROM rel_list inner_join_list where group_by opt_having order_by opt_limit
     {
@@ -856,8 +898,8 @@ select_stmt:        /*  select 语句的语法解析树*/
       $$->calc.expressions.swap(*$2);
       delete $2;
     }
-
     ;
+
 calc_stmt:
     CALC expression_list
     {

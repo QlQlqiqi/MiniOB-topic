@@ -55,6 +55,8 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/view_update_physical_operator.h"
 #include "sql/operator/vector_index_scan_logical_operator.h"
 #include "sql/operator/vector_index_scan_physical_operator.h"
+#include "sql/operator/create_table_select_logical_operator.h"
+#include "sql/operator/create_table_select_physical_operator.h"
 #include "sql/optimizer/physical_plan_generator.h"
 #include "storage/index/index.h"
 #include "physical_plan_generator.h"
@@ -117,6 +119,10 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
     } break;
     case LogicalOperatorType::VECTOR_INDEX_SCAN: {
       return create_plan(static_cast<VectorIndexScanLogicalOperator &>(logical_operator), oper);
+    } break;
+
+    case LogicalOperatorType::TABLE_SELECT: {
+      return create_plan(static_cast<CreateTableSelectLogicalOperator &>(logical_operator), oper);
     } break;
 
     default: {
@@ -328,6 +334,22 @@ RC PhysicalPlanGenerator::create_plan(
 
   LOG_TRACE("create a vector index scan physical operator");
   return rc;
+}
+
+RC PhysicalPlanGenerator::create_plan(
+    CreateTableSelectLogicalOperator &logical_oper, std::unique_ptr<PhysicalOperator> &oper)
+{
+  RC                           rc    = RC::SUCCESS;
+  Table                       *table = logical_oper.table();
+  unique_ptr<PhysicalOperator> select_physical_oper;
+  rc = create(*logical_oper.select_logical_operator(), select_physical_oper);
+  if (OB_FAIL(rc)) {
+    return rc;
+  }
+
+  oper = std::make_unique<CreateTableSelectPhysicalOperator>(table);
+  oper->add_child(std::move(select_physical_oper));
+  return RC::SUCCESS;
 }
 
 RC PhysicalPlanGenerator::create_plan(LimitLogicalOperator &limit_oper, unique_ptr<PhysicalOperator> &oper)
