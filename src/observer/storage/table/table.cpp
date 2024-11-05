@@ -720,7 +720,9 @@ RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, V
 {
   RC rc = RC::SUCCESS;
 
-  Record table_record = record;
+  Record new_record;
+  rc = get_record(record.rid(), new_record);
+
   if (OB_FAIL(rc)) {
     LOG_WARN("failed to get record during update. rid=%d, rc=%s", record.rid(), strrc(rc));
     return rc;
@@ -731,7 +733,7 @@ RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, V
       case AttrType::NULLS: {
         assert(f.nullable());
         auto ones = std::vector<char>(f.len(), '\1');
-        rc        = table_record.set_field(f.offset(), f.len(), ones.data());
+        rc        = new_record.set_field(f.offset(), f.len(), ones.data());
         if (OB_FAIL(rc)) {
           LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
           return rc;
@@ -746,16 +748,16 @@ RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, V
             return RC::INVALID_ARGUMENT;
           }
           // 先置 is_null 标志位为 0
-          table_record.set_field(f.offset(), 1, "\0");
+          new_record.set_field(f.offset(), 1, "\0");
           // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
           RC rc = set_text_and_store_record(
-              v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
+              v.data(), v.length(), new_record.data() + f.offset() + f.nullable());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to write text into text_buffer_pool_");
             return rc;
           }
         } else {
-          rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
+          rc = new_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
             return rc;
@@ -771,10 +773,10 @@ RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, V
             return RC::INVALID_ARGUMENT;
           }
           // 先置 is_null 标志位为 0
-          table_record.set_field(f.offset(), 1, "\0");
+          new_record.set_field(f.offset(), 1, "\0");
           // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
           RC rc = set_text_and_store_record(
-              v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
+              v.data(), v.length(), new_record.data() + f.offset() + f.nullable());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to write text into text_buffer_pool_");
             return rc;
@@ -782,7 +784,7 @@ RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, V
           break;
         }
         auto zeros = std::vector<char>(f.len(), '\0');
-        rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
+        rc         = new_record.set_field(f.offset(), f.len(), zeros.data());
         if (OB_FAIL(rc)) {
           LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
           return rc;
@@ -792,9 +794,9 @@ RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, V
       default: {
         ASSERT((size_t)f.nullable() <= 1, "we assume that casting a bool value to an integer returns either a 0 or an 1.");
         // 先置 is_null 标志位为 0
-        table_record.set_field(f.offset(), f.nullable(), "\0");
+        new_record.set_field(f.offset(), f.nullable(), "\0");
         // 然后修改值
-        rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
+        rc = new_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
         if (OB_FAIL(rc)) {
           LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
           return rc;
@@ -803,9 +805,10 @@ RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, V
     }
   }
 
-  // TODO(zyq): handle indexes
+  insert_entry_of_indexes(new_record.data(), new_record.rid());
+  rc = record_handler_->update_record(new_record);
+  delete_entry_of_indexes(record.data(), record.rid(), false);
 
-  rc = record_handler_->update_record(table_record);
   if (OB_FAIL(rc))
   {
     LOG_WARN("zyq: update_record failed, rc=%s", strrc(rc));
