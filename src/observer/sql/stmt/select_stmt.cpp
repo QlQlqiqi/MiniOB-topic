@@ -51,7 +51,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
   unordered_map<string, Table *> table_map;
 
   for (auto& [name, table] : parents) {
-    binder_context.add_table(table);
+    binder_context.add_table_without_check(table); 
     // 处理子查询时，这里区分上级查询和本级查询涉及的表，上级查询不做 tables.push_back(table);。
     table_map.insert({name, table});
   }
@@ -87,10 +87,16 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
       Table* alias_table = new Table;
       table->copy(alias_table, table_alias);
       tables.push_back(alias_table);
-      binder_context.add_table(alias_table);
+      rc = binder_context.add_table(alias_table);
+      if(OB_FAIL(rc)){
+        return rc;
+      }
       insert_alias_into_table_map(table_alias, alias_table, table_map);
     }else{
-      binder_context.add_table(table);
+      rc = binder_context.add_table(table);
+      if(OB_FAIL(rc)){
+        return rc;
+      }
       tables.push_back(table);
       table_map.insert({table_name, table});
     }
@@ -119,10 +125,16 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
         Table* alias_table = new Table;
         table->copy(alias_table, relation_alias);
         tables.push_back(alias_table);
-        binder_context.add_table(alias_table);
+        rc = binder_context.add_table(alias_table);
+        if(OB_FAIL(rc)){
+          return rc;
+        }
         insert_alias_into_table_map(relation_alias, alias_table, table_map);
       }else{
-        binder_context.add_table(table);
+        rc = binder_context.add_table(table);
+        if(OB_FAIL(rc)){
+          return rc;
+        }
         tables.push_back(table);
         table_map.insert({relation_name, table});
       }
