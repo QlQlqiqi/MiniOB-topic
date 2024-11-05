@@ -805,31 +805,22 @@ RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, V
     }
   }
 
-  rc = insert_entry_of_indexes(new_record.data(), new_record.rid());
-  if (rc != RC::SUCCESS) {
-    // 可能出现了键值重复
-    // 如果 key 重复，则不能删除 index 的 record
-    if (rc != RC::RECORD_DUPLICATE_KEY) {
-      RC rc2 = delete_entry_of_indexes(record.data(), record.rid(), false /*error_on_not_exists*/);
-      if (rc2 != RC::SUCCESS) {
-        LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
-                name(), rc2, strrc(rc2));
-      }
+  rc = delete_record(record);
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to delete old record.");
+    return rc;
+  }
+  Record tmp1 = record;
+  tmp1.copy_data(record.data(), record.len());
+
+  rc = insert_record(new_record);
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to insert new record, rollback.");
+    RC rc2 = insert_record(tmp1);
+    if (OB_FAIL(rc2)) {
+      LOG_ERROR("failed to recover old record, yet it has been removed by a failed update.");
+      return rc2;
     }
-    return rc;
-  }
-
-  rc = record_handler_->update_record(new_record);
-  if (OB_FAIL(rc))
-  {
-    LOG_WARN("zyq: update_record failed, rc=%s", strrc(rc));
-    return rc;
-  }
-
-  delete_entry_of_indexes(record.data(), record.rid(), false);
-  if (OB_FAIL(rc))
-  {
-    LOG_ERROR("failed to delete indexes");
     return rc;
   }
 
