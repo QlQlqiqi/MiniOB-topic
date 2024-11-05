@@ -805,8 +805,15 @@ RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, V
     }
   }
 
-  insert_entry_of_indexes(new_record.data(), new_record.rid());
+  rc = insert_entry_of_indexes(new_record.data(), new_record.rid());
+  if (OB_FAIL(rc))
+  {
+    delete_entry_of_indexes(new_record.data(), new_record.rid(), false);
+    return rc;
+  }
+
   rc = record_handler_->update_record(new_record);
+
   delete_entry_of_indexes(record.data(), record.rid(), false);
 
   if (OB_FAIL(rc))
