@@ -50,6 +50,7 @@ static void wildcard_fields(Table *table, vector<unique_ptr<Expression>> &expres
     }
     name.append(field.field_name());
     field_expr->set_name(name.c_str());
+    field_expr->set_alias("");
     expressions.emplace_back(field_expr);
   }
 }
@@ -217,6 +218,7 @@ RC ExpressionBinder::bind_unbound_field_expression(
     }
     name.append(field_name);
     field_expr->set_name(name.c_str());
+    field_expr->set_alias(expr->alias());
     bound_expressions.emplace_back(field_expr);
   }
 
@@ -564,6 +566,7 @@ RC ExpressionBinder::bind_aggregate_expression(
 
   auto aggregate_expr = make_unique<AggregateExpr>(aggregate_type, std::move(child_expr));
   aggregate_expr->set_name(unbound_aggregate_expr->name());
+  aggregate_expr->set_alias(unbound_aggregate_expr->alias());
   rc = check_aggregate_expression(*aggregate_expr);
   if (OB_FAIL(rc)) {
     return rc;

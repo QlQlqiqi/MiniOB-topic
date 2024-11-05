@@ -50,10 +50,14 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/hash_group_by_physical_operator.h"
 #include "sql/operator/scalar_group_by_physical_operator.h"
 #include "sql/operator/table_scan_vec_physical_operator.h"
+#include "sql/operator/view_get_logical_operator.h"
+#include "sql/operator/view_scan_physical_operator.h"
+#include "sql/operator/view_update_physical_operator.h"
 #include "sql/operator/vector_index_scan_logical_operator.h"
 #include "sql/operator/vector_index_scan_physical_operator.h"
 #include "sql/optimizer/physical_plan_generator.h"
 #include "storage/index/index.h"
+#include "physical_plan_generator.h"
 
 using namespace std;
 
@@ -68,6 +72,10 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
 
     case LogicalOperatorType::TABLE_GET: {
       return create_plan(static_cast<TableGetLogicalOperator &>(logical_operator), oper);
+    } break;
+
+    case LogicalOperatorType::VIEW_GET: {
+      return create_plan(static_cast<ViewGetLogicalOperator &>(logical_operator), oper);
     } break;
 
     case LogicalOperatorType::PREDICATE: {
@@ -202,15 +210,15 @@ RC PhysicalPlanGenerator::create_plan(TableGetLogicalOperator &table_get_oper, u
   if (index != nullptr && !value_expr->get_value().is_null()) {
     ASSERT(value_expr != nullptr, "got an index but value expr is null ?");
 
-    const Value               &value           = value_expr->get_value();
-    const auto &meta = field_expr->field().meta();
+    const Value &value = value_expr->get_value();
+    const auto  &meta  = field_expr->field().meta();
     // 对于 nullable 的 value 来说，需要补充 value 前面的 isnull 标记
-    if(meta->nullable() && !value.is_null()) {
+    if (meta->nullable() && !value.is_null()) {
       // 这里的 value 应该是没有 isnull 标记的
       ASSERT(meta->len() == value.length() + 1, "initial nullable value should be without isnull flag");
     }
     Record record;
-    char *record_data = (char *)malloc(meta->len());
+    char  *record_data = (char *)malloc(meta->len());
     memset(record_data, 0, meta->len());
     record_data[0] = value.is_null();
     memcpy(record_data + 1, value.data(), value.length());
@@ -288,7 +296,8 @@ RC PhysicalPlanGenerator::create_plan(ProjectLogicalOperator &project_oper, uniq
   return rc;
 }
 
-RC PhysicalPlanGenerator::create_plan(VectorIndexScanLogicalOperator &vector_index_scan_oper, unique_ptr<PhysicalOperator> &oper)
+RC PhysicalPlanGenerator::create_plan(
+    VectorIndexScanLogicalOperator &vector_index_scan_oper, unique_ptr<PhysicalOperator> &oper)
 {
   vector<unique_ptr<LogicalOperator>> &child_opers = vector_index_scan_oper.children();
 
@@ -378,7 +387,11 @@ RC PhysicalPlanGenerator::create_plan(UpdateLogicalOperator &update_oper, unique
     }
   }
 
-  oper.reset(new UpdatePhysicalOperator(table, std::move(values)));
+  if (table->type() == TableType::TABLE) {  // table
+    oper.reset(new UpdatePhysicalOperator(table, std::move(values)));
+  } else {  // view
+    oper.reset(new ViewUpdatePhysicalOperator(static_cast<View *>(table), std::move(values)));
+  }
 
   if (child_physical_oper) {
     oper->add_child(std::move(child_physical_oper));
@@ -513,6 +526,26 @@ RC PhysicalPlanGenerator::create_plan(OrderByLogicalOperator &logical_oper, std:
   }
   order_by_oper->add_child(std::move(child_physical_oper));
   oper = std::move(order_by_oper);
+  return RC::SUCCESS;
+}
+
+RC PhysicalPlanGenerator::create_plan(ViewGetLogicalOperator &logical_oper, std::unique_ptr<PhysicalOperator> &oper)
+{
+  auto &select_logical_operator = logical_oper.select_logical_operator();
+  auto  view                    = logical_oper.view();
+  ASSERT(select_logical_operator != nullptr, "view get logical operator should have a select logical operator");
+  ASSERT(view != nullptr && view->type() == TableType::VIEW, "view should be a select view");
+  unique_ptr<PhysicalOperator> select_physical_oper;
+  RC                           rc = create(*select_logical_operator, select_physical_oper);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to create select physical operator. rc=%s", strrc(rc));
+    return rc;
+  }
+
+  unique_ptr<ViewScanPhysicalOperator> view_scan_oper =
+      make_unique<ViewScanPhysicalOperator>(view, logical_oper.read_write_mode());
+  view_scan_oper->add_child(std::move(select_physical_oper));
+  oper = std::move(view_scan_oper);
   return RC::SUCCESS;
 }
 

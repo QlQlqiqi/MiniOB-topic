@@ -110,6 +110,14 @@ public:
    */
   virtual int value_length() const { return -1; }
 
+
+  /**
+   * @brief 表达式值是否可以为空
+   * 
+   * @return bool value 是否可以为空
+   */
+  virtual bool value_nullable() const {return false;}
+
   /**
    * @brief 表达式的名字，比如是字段名称，或者用户在执行SQL语句时输入的内容
    */
@@ -121,6 +129,7 @@ public:
    * @brief 表达式的别名
    */
   virtual const string&  alias() const{return alias_;}
+  virtual const bool     has_alias() const{return !alias_.empty();}
   virtual void        set_alias(std::string alias){alias_ = alias;}
 
   /**
@@ -221,6 +230,7 @@ public:
   ExprType type() const override { return ExprType::FIELD; }
   AttrType value_type() const override { return field_.attr_type(); }
   int      value_length() const override { return field_.meta()->len(); }
+  bool     value_nullable() const override {return field_.meta()->nullable();}
 
   Field &field() { return field_; }
 

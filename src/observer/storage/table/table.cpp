@@ -32,6 +32,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/table/table.h"
 #include "storage/trx/trx.h"
 
+
 Table::~Table()
 {
   if (record_handler_ != nullptr) {
@@ -180,6 +181,17 @@ RC Table::drop(const char *path, const char *name, const char *base_dir)
   return rc;
 }
 
+void Table::copy(Table *table,std::string name){
+  table->db_ = db_;
+  table->base_dir_=base_dir_;
+  table->table_meta_=table_meta_;
+  table->data_buffer_pool_ = data_buffer_pool_;   /// 数据文件关联的buffer pool
+  table->text_buffer_pool_ = text_buffer_pool_;
+  table->record_handler_ = record_handler_;  /// 记录操作
+  table->indexes_=indexes_;
+  table->table_meta_.set_name(name);
+}
+
 RC Table::open(Db *db, const char *meta_file, const char *base_dir)
 {
   // 加载元数据文件
@@ -292,7 +304,7 @@ RC Table::visit_record(const RID &rid, function<bool(Record &)> visitor)
   return record_handler_->visit_record(rid, visitor);
 }
 
-RC Table::get_record(const RID &rid, Record &record)
+RC Table::get_record(const RID &rid, Record &record) const
 {
   RC rc = record_handler_->get_record(rid, record);
   if (rc != RC::SUCCESS) {
@@ -448,7 +460,7 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
         LOG_WARN("failed to write text into text_buffer_pool_");
         return rc;
       }
-    }else {
+    } else {
       memcpy(record_data, value.data(), value.length());
     }
   }
@@ -577,7 +589,7 @@ RC Table::create_index(Trx *trx, const std::vector<const FieldMeta *> &field_met
   for (size_t i = 0; i < field_metas.size(); i++) {
     const FieldMeta *field_meta = field_metas[i];
     int              field_id   = 0;
-    for (FieldMeta field : *table_meta_.field_metas()) {
+    for (FieldMeta field : table_meta_.field_metas()) {
       if (0 == strcmp(field.name(), field_meta->name())) {
         field_ids.emplace_back(field_id);
         break;

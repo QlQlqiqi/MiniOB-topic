@@ -19,6 +19,7 @@ See the Mulan PSL v2 for more details. */
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 #include "sql/parser/expression_binder.h"
+#include "storage/common/meta_util.h"
 
 using namespace std;
 using namespace common;
@@ -81,20 +82,19 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
     if(rc != RC::SUCCESS){
       return rc;
     }
-    binder_context.add_table(table);
-    tables.push_back(table);
-    table_map.insert({table_name, table});
 
     if(!table_alias.empty()){
-      rc = binder_context.add_alias(table_alias, table);
-      if (OB_FAIL(rc)) {
-        return rc;
-      }
-      insert_alias_into_table_map(table_alias, table, table_map);
+      Table* alias_table = new Table;
+      table->copy(alias_table, table_alias);
+      tables.push_back(alias_table);
+      binder_context.add_table(alias_table);
+      insert_alias_into_table_map(table_alias, alias_table, table_map);
+    }else{
+      binder_context.add_table(table);
+      tables.push_back(table);
+      table_map.insert({table_name, table});
     }
   }
-
-
 
   // inner join statement
   std::unordered_map<Table* , std::unique_ptr<FilterStmt>> join_conditions;
@@ -115,16 +115,16 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
         return rc;
       }
 
-      binder_context.add_table(table);
-      tables.push_back(table);
-      table_map.insert({relation_name, table});
-
       if(!relation_alias.empty()){
-        rc = binder_context.add_alias(relation_alias, table);
-        if (OB_FAIL(rc)) {
-          return rc;
-        }
-        insert_alias_into_table_map(relation_alias, table, table_map);
+        Table* alias_table = new Table;
+        table->copy(alias_table, relation_alias);
+        tables.push_back(alias_table);
+        binder_context.add_table(alias_table);
+        insert_alias_into_table_map(relation_alias, alias_table, table_map);
+      }else{
+        binder_context.add_table(table);
+        tables.push_back(table);
+        table_map.insert({relation_name, table});
       }
 
       FilterStmt *filter_stmt = nullptr;

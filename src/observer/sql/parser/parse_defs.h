@@ -319,6 +319,27 @@ struct SetVariableSqlNode
 class ParsedSqlNode;
 
 /**
+ * @brief 描述一个create view语句
+ * @ingroup SQLParser
+ */
+struct CreateViewSqlNode
+{
+  std::string                            view_name;          ///< Relation name
+  std::vector<std::string>               attr_ids;           ///< attributes
+  std::unique_ptr<ParsedSqlNode>         select_stmt;        ///< select clause
+  std::string                            select_sql;        ///< select sql    
+};
+
+/**
+ * @brief 描述一个drop view语句
+ * @ingroup SQLParser
+ */
+struct DropViewSqlNode
+{
+  std::string view_name;  ///< 要删除的视图名
+};
+
+/**
  * @brief 描述一个explain语句
  * @ingroup SQLParser
  * @details 会创建operator的语句，才能用explain输出执行计划。
@@ -357,6 +378,8 @@ enum SqlCommandFlag
   SCF_DELETE,
   SCF_CREATE_TABLE,
   SCF_DROP_TABLE,
+  SCF_CREATE_VIEW,
+  SCF_DROP_VIEW,
   SCF_CREATE_INDEX,
   SCF_DROP_INDEX,
   SCF_SYNC,
@@ -388,6 +411,8 @@ public:
   UpdateSqlNode       update;
   CreateTableSqlNode  create_table;
   DropTableSqlNode    drop_table;
+  CreateViewSqlNode   create_view;
+  DropViewSqlNode     drop_view;
   CreateIndexSqlNode  create_index;
   DropIndexSqlNode    drop_index;
   DescTableSqlNode    desc_table;

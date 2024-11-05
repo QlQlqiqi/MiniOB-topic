@@ -26,9 +26,13 @@ See the Mulan PSL v2 for more details. */
 #include "storage/common/meta_util.h"
 #include "storage/table/table.h"
 #include "storage/table/table_meta.h"
+#include "storage/view/view.h"
+#include "storage/view/view_meta.h"
 #include "storage/trx/trx.h"
 #include "storage/clog/disk_log_handler.h"
 #include "storage/clog/integrated_log_replayer.h"
+#include "sql/stmt/create_view_stmt.h"
+#include "db.h"
 
 using namespace common;
 
@@ -120,6 +124,14 @@ RC Db::init(const char *name, const char *dbpath, const char *trx_kit_name, cons
     return rc;
   }
 
+  // 打开所有视图
+  // 在实际生产数据库中，直接打开所有视图，可能耗时会比较长
+  rc = open_all_views();
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to open all views. dbpath=%s, rc=%s", dbpath, strrc(rc));
+    return rc;
+  }
+
   rc = init_dblwr_buffer();
   if (OB_FAIL(rc)) {
     LOG_WARN("failed to init dblwr buffer. rc = %s", strrc(rc));
@@ -174,7 +186,7 @@ RC Db::drop_table(const char *table_name)
 
   // 文件路径可以移到 Table 模块
   string table_file_path = table_meta_file(path_.c_str(), table_name);
-  RC rc = table->drop(table_file_path.c_str(), table_name, path_.c_str());
+  RC     rc              = table->drop(table_file_path.c_str(), table_name, path_.c_str());
   if (rc != RC::SUCCESS) {
     LOG_ERROR("Failed to detele table %s.", table_name);
     return rc;
@@ -244,6 +256,80 @@ RC Db::open_all_tables()
   return rc;
 }
 
+RC Db::open_all_views()
+{
+  vector<string> view_meta_files;
+  vector<string> view_table_meta_files;
+
+  int ret = list_file(path_.c_str(), VIEW_META_FILE_PATTERN, view_meta_files);
+  if (ret < 0) {
+    LOG_ERROR("Failed to list table meta files under %s.", path_.c_str());
+    return RC::IOERR_READ;
+  }
+
+  ret = list_file(path_.c_str(), VIEW_TABLE_META_FILE_PATTERN, view_table_meta_files);
+
+  ASSERT(view_meta_files.size() == view_table_meta_files.size(), "should be eqaul");
+  RC rc = RC::SUCCESS;
+  for (size_t i = 0; i < view_meta_files.size(); i++) {
+
+    const string& view_meta_filename = view_meta_files[i];
+    const string& view_table_meta_filename = view_table_meta_files[i];
+    View *view = new View();
+    rc         = view->open(this, view_meta_filename.c_str(), view_table_meta_filename.c_str(), path_.c_str());
+    if (rc != RC::SUCCESS) {
+      delete view;
+      LOG_ERROR("Failed to open table. view_meta_filename=%s, view_table_meta_filename=%s", view_meta_filename.c_str(), view_table_meta_filename.c_str());
+      return rc;
+    }
+
+    if (opened_tables_.count(view->name()) != 0) {
+      LOG_ERROR("Duplicate table with difference file name. table=%s, the other filename=%s",
+          view->name(), view_meta_filename.c_str());
+      // 在这里原本先删除view后调用view->name()方法，犯了use-after-free的错误
+      delete view;
+      return RC::INTERNAL;
+    }
+
+    if (view->view_id() >= next_table_id_) {
+      next_view_id_ = view->view_id() + 1;
+    }
+    opened_tables_[view->name()] = view;
+    LOG_INFO("Open view: %s, file: %s", view->name(), view_meta_filename.c_str());
+  }
+
+
+  LOG_INFO("All view have been opened. num=%d", opened_tables_.size());
+  return rc;
+}
+
+RC Db::create_view(CreateViewStmt *create_view_stmt)
+{
+  const char *view_name = create_view_stmt->view_name().c_str();
+  RC          rc        = RC::SUCCESS;
+  // check table_name
+  if (opened_tables_.count(view_name) != 0) {
+    LOG_WARN("%s has been opened before.", view_name);
+    return RC::SCHEMA_TABLE_EXIST;
+  }
+
+  // 文件路径可以移到 View 模块
+  View   *view           = new View();
+  int32_t view_id        = next_view_id_++;
+  rc = view->create(this, view_id, view_name, path_.c_str(), create_view_stmt);
+  if (rc != RC::SUCCESS) {
+    LOG_ERROR("Failed to create table %s.", view_name);
+    delete view;
+    return rc;
+  }
+
+  opened_tables_[view_name] = view;
+  LOG_INFO("Create table success. table name=%s, table_id:%d", view_name, view_id);
+  return RC::SUCCESS;
+}
+
+RC Db::drop_view(const char *table_name) { return RC::UNIMPLEMENTED; }
+
 const char *Db::name() const { return name_.c_str(); }
 
 void Db::all_tables(vector<string> &table_names) const
@@ -259,10 +345,12 @@ RC Db::sync()
   // 调用所有表的sync函数刷新数据到磁盘
   for (const auto &table_pair : opened_tables_) {
     Table *table = table_pair.second;
-    rc           = table->sync();
-    if (rc != RC::SUCCESS) {
-      LOG_ERROR("Failed to flush table. table=%s.%s, rc=%d:%s", name_.c_str(), table->name(), rc, strrc(rc));
-      return rc;
+    if(table->type() == TableType::TABLE){
+      rc           = table->sync();
+      if (rc != RC::SUCCESS) {
+        LOG_ERROR("Failed to flush table. table=%s.%s, rc=%d:%s", name_.c_str(), table->name(), rc, strrc(rc));
+        return rc;
+      }
     }
     LOG_INFO("Successfully sync table db:%s, table:%s.", name_.c_str(), table->name());
   }

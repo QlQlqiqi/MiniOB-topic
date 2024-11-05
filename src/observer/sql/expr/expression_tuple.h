@@ -79,6 +79,11 @@ public:
     return rc;
   }
 
+  RC get_rids(std::map<Table*, RID> &rid_map) const override{
+    ASSERT(child_tuple_ != nullptr, "the child tuple should not be nullptr");
+    return child_tuple_->get_rids(rid_map);
+  }
+
 private:
   RC get_value(const ExprPointerType &expression, Value &value) const
   {

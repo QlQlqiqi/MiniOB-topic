@@ -49,6 +49,8 @@ public:
   bool        high_vector() const;
   int         dim() const;
 
+  void set_name(const string& new_name);
+
 public:
   void desc(ostream &os) const;
 

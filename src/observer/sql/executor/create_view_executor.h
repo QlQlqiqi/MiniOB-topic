@@ -9,12 +9,24 @@ MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 See the Mulan PSL v2 for more details. */
 
 //
-// Created by WangYunlai on 2023/4/25.
+// Created by Wangyunlai on 2023/6/13.
 //
 
-#include "sql/operator/insert_logical_operator.h"
-#include "storage/view/view.h"
+#pragma once
 
-InsertLogicalOperator::InsertLogicalOperator(Table *table, std::vector<Value> values) : table_(table), values_(values)
-{}
+#include "common/rc.h"
 
+class SQLStageEvent;
+
+/**
+ * @brief 创建表的执行器
+ * @ingroup Executor
+ */
+class CreateViewExecutor
+{
+public:
+  CreateViewExecutor()          = default;
+  virtual ~CreateViewExecutor() = default;
+
+  RC execute(SQLStageEvent *sql_event);
+};

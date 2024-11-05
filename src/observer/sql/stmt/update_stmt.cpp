@@ -52,7 +52,7 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
 
   // find out the fields, and check the schema
   const TableMeta              &table_meta    = table->table_meta();
-  const std::vector<FieldMeta> *field_metas   = table_meta.field_metas();
+  const std::vector<FieldMeta> *field_metas   = &table_meta.field_metas();
 
   std::unordered_map<std::string, const FieldMeta *> field_name_map;
   for (auto& field_meta : *field_metas)

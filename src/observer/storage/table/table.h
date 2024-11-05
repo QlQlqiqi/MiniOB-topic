@@ -33,6 +33,11 @@ class RecordDeleter;
 class Trx;
 class Db;
 
+enum class TableType{
+  TABLE,
+  VIEW
+};
+
 /**
  * @brief 表
  *
@@ -41,7 +46,7 @@ class Table
 {
 public:
   Table() = default;
-  ~Table();
+  virtual ~Table();
 
   /**
    * 创建一个表
@@ -60,14 +65,16 @@ public:
    * @param name 表名
    * @param base_dir 表数据存放的路径
    */
-  RC drop(const char *path, const char *name, const char *base_dir);
+  virtual RC drop(const char *path, const char *name, const char *base_dir);
 
   /**
    * 打开一个表
    * @param meta_file 保存表元数据的文件完整路径
    * @param base_dir 表所在的文件夹，表记录数据文件、索引数据文件存放位置
    */
-  RC open(Db *db, const char *meta_file, const char *base_dir);
+  virtual RC open(Db *db, const char *meta_file, const char *base_dir);
+
+  virtual void copy(Table *table,std::string name);
 
   /**
    * @brief 根据给定的字段生成一个记录/行
@@ -86,7 +93,7 @@ public:
   RC insert_record(Record &record);
   RC delete_record(const Record &record);
   RC delete_record(const RID &rid);
-  RC get_record(const RID &rid, Record &record);
+  RC get_record(const RID &rid, Record &record) const;
 
   RC recover_insert_record(Record &record);
 
@@ -112,12 +119,13 @@ public:
   const vector<Index *> &indexes() const { return indexes_; }
 
 public:
-  int32_t     table_id() const { return table_meta_.table_id(); }
-  const char *name() const;
+  virtual int32_t     table_id() const { return table_meta_.table_id(); }
+  virtual const char *name() const;
+  virtual TableType type() const { return TableType::TABLE; }
 
-  Db *db() const { return db_; }
+  virtual Db *db() const { return db_; }
 
-  const TableMeta &table_meta() const;
+  virtual const TableMeta &table_meta() const;
 
   RC sync();
 
@@ -147,10 +155,14 @@ public:
   // 与 get_text_from_record 对应
   RC set_text_and_store_record(const char *data, const int len, char *record);
 
-private:
+
+
+protected:
   Db                *db_ = nullptr;
   string             base_dir_;
   TableMeta          table_meta_;
+
+private:
   DiskBufferPool    *data_buffer_pool_ = nullptr;  /// 数据文件关联的buffer pool
   // 对于 text 的数据，会将 text 内容存入 text_buffer_pool，因为 text 和 char 使用
   // 同一种数据结构，所以这个文件最大不得超过 (1 << 31)Byte；

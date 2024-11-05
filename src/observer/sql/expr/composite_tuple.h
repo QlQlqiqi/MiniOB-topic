@@ -41,6 +41,7 @@ public:
   RC  cell_at(int index, Value &cell) const override;
   RC  spec_at(int index, TupleCellSpec &spec) const override;
   RC  find_cell(const TupleCellSpec &spec, Value &cell) const override;
+  RC get_rids(std::map<Table*, RID> &rid_map) const override;
 
   std::unique_ptr<Tuple> clone() const override{
     std::unique_ptr<CompositeTuple> clone_ = make_unique<CompositeTuple>();
@@ -52,8 +53,10 @@ public:
     return clone_;
   }
 
+
   void   add_tuple(std::unique_ptr<Tuple> tuple);
   Tuple &tuple_at(size_t index);
+
 
 private:
   std::vector<std::unique_ptr<Tuple>> tuples_;
