@@ -73,8 +73,7 @@ RC UpdatePhysicalOperator::next()
 
   auto child = children_[0].get();
 
-  while (RC::SUCCESS == (rc = child->next()))
-  {
+  while (RC::SUCCESS == (rc = child->next())) {
     Tuple *tuple = child->current_tuple();
     if (!tuple)
     {
@@ -83,7 +82,13 @@ RC UpdatePhysicalOperator::next()
     }
 
     RowTuple *row_tuple = static_cast<RowTuple *>(tuple);
+    records_.emplace_back(std::move(row_tuple->record()));
+  }
 
+  child->close();
+
+  for (auto& record : records_)
+  {
     auto match = [](FieldMeta &f, Value &v) {
       if (auto ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
         if (f.nullable() && v.attr_type() == AttrType::NULLS) {
@@ -101,7 +106,7 @@ RC UpdatePhysicalOperator::next()
     std::vector<std::pair<FieldMeta, Value>> raw_values;
     for (auto &[f, expr] : values_) {
       Value v;
-      RC rc = expr->get_value(*row_tuple, v);
+      RC    rc = expr->get_value(RowTuple{}, v); // unrelated to tuple
       if (OB_FAIL(rc)) {
         if (rc == RC::RECORD_EOF) {
           v.set_null();
@@ -113,18 +118,16 @@ RC UpdatePhysicalOperator::next()
       rc = match(f, v);
       if (OB_FAIL(rc)) {
         sql_debug("schema mismatch. field(%s) type: %d, value type: %d",
-          f.name(),
-          static_cast<int>(f.type()),
-          static_cast<int>(v.attr_type()));
+            f.name(),
+            static_cast<int>(f.type()),
+            static_cast<int>(v.attr_type()));
         LOG_WARN("schema mismatch. field type: %d, value type: %d", static_cast<int>(f.type()), static_cast<int>(v.attr_type()));
         return rc;
       }
 
-      if (expr->type() == ExprType::SUBQUERY || expr->type() == ExprType::EXPRLIST)
-      {
-        auto sq_expr    = static_cast<const EnumerableExpr *>(expr.get());
-        if (sq_expr->get_value_with_eof(*row_tuple, v) != RC::RECORD_EOF)
-        {
+      if (expr->type() == ExprType::SUBQUERY || expr->type() == ExprType::EXPRLIST) {
+        auto sq_expr = static_cast<const EnumerableExpr *>(expr.get());
+        if (sq_expr->get_value_with_eof(RowTuple{}, v) != RC::RECORD_EOF) {
           LOG_WARN("Expected a scalar expression to update.");
           return RC::INVALID_ARGUMENT;
         }
@@ -133,7 +136,7 @@ RC UpdatePhysicalOperator::next()
       raw_values.emplace_back(f, v);
     }
 
-    rc = trx_->update_record(table_, row_tuple->record(), raw_values);
+    rc = trx_->update_record(table_, record, raw_values);
   }
 
   return RC::RECORD_EOF;
@@ -143,8 +146,5 @@ RC UpdatePhysicalOperator::next()
 
 RC UpdatePhysicalOperator::close()
 {
-  if (!children_.empty()) {
-    return children_[0]->close();
-  }
   return RC::SUCCESS;
 }
