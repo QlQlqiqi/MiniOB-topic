@@ -181,6 +181,17 @@ RC Table::drop(const char *path, const char *name, const char *base_dir)
   return rc;
 }
 
+void Table::copy(Table *table,std::string name){
+  table->db_ = db_;
+  table->base_dir_=base_dir_;
+  table->table_meta_=table_meta_;
+  table->data_buffer_pool_ = data_buffer_pool_;   /// 数据文件关联的buffer pool
+  table->text_buffer_pool_ = text_buffer_pool_;
+  table->record_handler_ = record_handler_;  /// 记录操作
+  table->indexes_=indexes_;
+  table->table_meta_.set_name(name);
+}
+
 RC Table::open(Db *db, const char *meta_file, const char *base_dir)
 {
   // 加载元数据文件

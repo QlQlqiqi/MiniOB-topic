@@ -73,6 +73,9 @@ public:
   void to_string(std::string &output) const override;
   void desc(std::ostream &os) const;
 
+public:
+  void             set_name(const std::string& name){name_ = name;}
+
   friend class View;
 
 protected:

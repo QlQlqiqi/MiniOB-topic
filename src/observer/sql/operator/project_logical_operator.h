@@ -31,7 +31,6 @@ class ProjectLogicalOperator : public LogicalOperator
 public:
   ProjectLogicalOperator(std::vector<std::unique_ptr<Expression>> &&expressions);
   virtual ~ProjectLogicalOperator() = default;
-
   LogicalOperatorType type() const override { return LogicalOperatorType::PROJECTION; }
 
   std::vector<std::unique_ptr<Expression>>       &expressions() { return expressions_; }
