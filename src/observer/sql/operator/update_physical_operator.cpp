@@ -28,14 +28,14 @@ RC UpdatePhysicalOperator::rollback(
     Trx *trx, std::vector<Record> &deleted_records, std::vector<Record> &inserted_records) const
 {
   for (auto &record : inserted_records) {
-    RC rc = trx->delete_record(table_, record);
+    RC rc = trx_->delete_record(table_, record);
     if (OB_FAIL(rc)) {
       LOG_WARN("failed to rollback in delete records: %s", strrc(rc));
       return rc;
     }
   }
   for (auto &record : deleted_records) {
-    RC rc = trx->insert_record(table_, record);
+    RC rc = trx_->insert_record(table_, record);
     if (OB_FAIL(rc)) {
       LOG_WARN("failed to rollback in insert records: %s", strrc(rc));
       return rc;
@@ -61,6 +61,14 @@ RC UpdatePhysicalOperator::open(Trx *trx)
   }
 
   trx_ = trx;
+}
+
+RC UpdatePhysicalOperator::next()
+{
+  
+  std::unique_ptr<PhysicalOperator> &child = children_[0];
+
+  RC rc = RC::SUCCESS;
 
   RowTuple *row_tuple = nullptr;
   while (OB_SUCC(rc = child->next())) {
@@ -91,8 +99,8 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     rc = table_->get_record(record.rid(), table_record);
     if (OB_FAIL(rc)) {
       LOG_WARN("failed to get record. rid=%d, rc=%s", record.rid(), strrc(rc));
-      trx->rollback();
-      rollback(trx, deleted_records, inserted_records);
+      trx_->rollback();
+      rollback(trx_, deleted_records, inserted_records);
       return rc;
     }
 
@@ -162,7 +170,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           rc        = table_record.set_field(f.offset(), f.len(), ones.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-            trx->rollback();
+            trx_->rollback();
             return rc;
           }
         } break;
@@ -172,7 +180,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
             // 检查 high vector dim
             if (f.dim() * sizeof(double) != v.length()) {
               LOG_WARN("high field's length %d should be the same as value's %d", f.dim() * sizeof(double), v.length());
-              trx->rollback();
+              trx_->rollback();
               return RC::INVALID_ARGUMENT;
             }
             // 先置 is_null 标志位为 0
@@ -182,14 +190,14 @@ RC UpdatePhysicalOperator::open(Trx *trx)
                 v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
             if (OB_FAIL(rc)) {
               LOG_WARN("failed to write text into text_buffer_pool_");
-              trx->rollback();
+              trx_->rollback();
               return rc;
             }
           } else {
             rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
             if (OB_FAIL(rc)) {
               LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-              trx->rollback();
+              trx_->rollback();
               return rc;
             }
           }
@@ -200,7 +208,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
             // 检查 text 是否超过限制
             if (v.length() > TEXT_MAX_SIZE) {
               LOG_WARN("text length is too large: %d", v.length());
-              trx->rollback();
+              trx_->rollback();
               return RC::INVALID_ARGUMENT;
             }
             // 先置 is_null 标志位为 0
@@ -210,7 +218,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
                 v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
             if (OB_FAIL(rc)) {
               LOG_WARN("failed to write text into text_buffer_pool_");
-              trx->rollback();
+              trx_->rollback();
               return rc;
             }
             break;
@@ -219,7 +227,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-            trx->rollback();
+            trx_->rollback();
             return rc;
           }
           [[fallthrough]];
@@ -232,7 +240,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-            trx->rollback();
+            trx_->rollback();
             return rc;
           }
         } break;
@@ -240,12 +248,12 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     }
 
     // 2. remove old record...
-    rc = trx->delete_record(table_, record);
+    rc = trx_->delete_record(table_, record);
     if (OB_FAIL(rc)) {
       sql_debug("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
       LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
-      trx->rollback();
-      rollback(trx, deleted_records, inserted_records);
+      trx_->rollback();
+      rollback(trx_, deleted_records, inserted_records);
       return rc;
     }
     Record tmp1 = record;
@@ -253,12 +261,12 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     deleted_records.emplace_back(tmp1);
 
     // 3. insert new record...
-    rc = trx->insert_record(table_, table_record);
+    rc = trx_->insert_record(table_, table_record);
     if (OB_FAIL(rc)) {
       sql_debug("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
       LOG_WARN("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
-      trx->rollback();
-      rollback(trx, deleted_records, inserted_records);
+      trx_->rollback();
+      rollback(trx_, deleted_records, inserted_records);
       return rc;
     }
     Record tmp2 = table_record;
@@ -266,10 +274,15 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     inserted_records.emplace_back(tmp2);
   }
 
-  return RC::SUCCESS;
-
+   return RC::RECORD_EOF;
 }
 
-RC UpdatePhysicalOperator::next() { return RC::RECORD_EOF; }
+RC UpdatePhysicalOperator::close()
+{
+  if (!children_.empty())
+  {
+    return children_[0]->close();
+  }
 
-RC UpdatePhysicalOperator::close() { return RC::SUCCESS; }
+  return RC::SUCCESS;
+}
