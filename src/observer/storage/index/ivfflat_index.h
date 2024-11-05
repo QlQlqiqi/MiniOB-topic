@@ -47,9 +47,6 @@ public:
   int func_type() const { return func_type_; }
 
 private:
-// 在 data_ptr_ 中精确寻找 v
-  // RC find(const std::vector<double> &v, int &found_idx) const;
-
   BplusTreeHandler index_handler_;
   Table           *table_     = nullptr;
   bool             inited_    = false;
@@ -63,7 +60,7 @@ private:
   // 这里存储的数据是整个 record 全部
 
   // 会将数据在内存中保存一份，存储在 data_ 中
-  // 这里的数据不存储 isnull 标识符
+  // NOTES: 这里的数据不存储 isnull 标识符
   std::unique_ptr<std::vector<RecordPtr>> data_ptr_;
   // 第一个 vector 是簇的数量，长度是 lists_
   std::unique_ptr<std::vector<std::vector<RecordPtr>>> kmeans_ptr_;

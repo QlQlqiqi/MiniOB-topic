@@ -133,8 +133,8 @@ RC VectorIndexScanPhysicalOperator::read_all()
   Value value;
   tmp.cast_to(tmp, AttrType::VECTORS, value);
   std::vector<double> target;
-  target.resize(value.length() - field_meta_->nullable());
-  memcpy(target.data(), value.data() + field_meta_->nullable(), value.length() - field_meta_->nullable());
+  target.resize(field_meta_->dim());
+  memcpy(target.data(), value.data(), value.length());
 
   std::vector<RID> res;
   index_->ann_search(target, limit_num_, res);
