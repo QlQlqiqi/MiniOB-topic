@@ -15,6 +15,7 @@ See the Mulan PSL v2 for more details. */
 #pragma once
 
 #include "sql/operator/physical_operator.h"
+#include "sql/operator/project_logical_operator.h"
 #include "sql/expr/expression_tuple.h"
 
 /**
@@ -26,7 +27,13 @@ class ProjectPhysicalOperator : public PhysicalOperator
 public:
   ProjectPhysicalOperator(std::vector<std::unique_ptr<Expression>> &&expressions);
 
-  virtual ~ProjectPhysicalOperator() = default;
+  virtual ~ProjectPhysicalOperator() override
+  {
+    if (logical_oper)
+    {
+      logical_oper->expressions() = std::move(expressions_);
+    }
+  }
 
   PhysicalOperatorType type() const override { return PhysicalOperatorType::PROJECT; }
 
@@ -39,6 +46,8 @@ public:
   Tuple *current_tuple() override;
 
   RC tuple_schema(TupleSchema &schema) const override;
+
+  ProjectLogicalOperator* logical_oper = nullptr;
 
 private:
   std::vector<std::unique_ptr<Expression>>     expressions_;

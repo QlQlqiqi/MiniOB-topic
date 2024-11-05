@@ -709,9 +709,6 @@ private:
   mutable std::unique_ptr<LogicalOperator>    logical_oper_;
   mutable std::unique_ptr<PhysicalOperator>   physical_oper_;
   mutable bool                                is_open_ = false;
-  mutable std::vector<Value>                  selected_values_;
-  mutable bool                                cached_  = false;
-  mutable size_t                              current_ = 0;
 };
 
 class ExprListExpr : public EnumerableExpr

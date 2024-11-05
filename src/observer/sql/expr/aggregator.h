@@ -40,6 +40,10 @@ class ImmediateAggregator : virtual public Aggregator
 public:
   RC evaluate(Value &result) override
   {
+    if (value_.attr_type() == AttrType::UNDEFINED)
+    {
+      value_.set_null();
+    }
     result = value_;
     return RC::SUCCESS;
   }

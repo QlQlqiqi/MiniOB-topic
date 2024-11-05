@@ -20,6 +20,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/expr/expression.h"
 #include "sql/operator/logical_operator.h"
 #include "storage/field/field.h"
+#include "sql/stmt/select_stmt.h"
 
 /**
  * @brief project 表示投影运算
@@ -30,10 +31,18 @@ class ProjectLogicalOperator : public LogicalOperator
 {
 public:
   ProjectLogicalOperator(std::vector<std::unique_ptr<Expression>> &&expressions);
-  virtual ~ProjectLogicalOperator() = default;
+  virtual ~ProjectLogicalOperator()
+  {
+    if (select_stmt)
+    {
+      select_stmt->query_expressions() = std::move(expressions());
+    }
+  };
 
   LogicalOperatorType type() const override { return LogicalOperatorType::PROJECTION; }
 
   std::vector<std::unique_ptr<Expression>>       &expressions() { return expressions_; }
   const std::vector<std::unique_ptr<Expression>> &expressions() const { return expressions_; }
+
+  SelectStmt *select_stmt = nullptr;
 };
