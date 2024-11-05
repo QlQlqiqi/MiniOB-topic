@@ -38,6 +38,8 @@ RC VacuousTrx::delete_record(Table *table, Record &record) { return table->delet
 
 RC VacuousTrx::visit_record(Table *table, Record &record, ReadWriteMode) { return RC::SUCCESS; }
 
+RC VacuousTrx::update_record(Table *table, Record &record, const std::vector<std::pair<FieldMeta, Value>> &values) { return table->update_record(record, values); }
+
 RC VacuousTrx::start_if_need() { return RC::SUCCESS; }
 
 RC VacuousTrx::commit() { return RC::SUCCESS; }

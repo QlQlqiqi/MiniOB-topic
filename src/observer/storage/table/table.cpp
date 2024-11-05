@@ -716,6 +716,105 @@ RC Table::delete_record(const Record &record)
   return rc;
 }
 
+RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, Value>> &values)
+{
+  RC rc = RC::SUCCESS;
+
+  Record table_record = record;
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to get record during update. rid=%d, rc=%s", record.rid(), strrc(rc));
+    return rc;
+  }
+
+  for (const auto &[f, v] : values) {
+    switch (v.attr_type()) {
+      case AttrType::NULLS: {
+        assert(f.nullable());
+        auto ones = std::vector<char>(f.len(), '\1');
+        rc        = table_record.set_field(f.offset(), f.len(), ones.data());
+        if (OB_FAIL(rc)) {
+          LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+          return rc;
+        }
+      } break;
+      case AttrType::VECTORS: {
+        // high vector 与 text 处理方式类似
+        if (f.high_vector()) {
+          // 检查 high vector dim
+          if (f.dim() * sizeof(double) != v.length()) {
+            LOG_WARN("high field's length %d should be the same as value's %d", f.dim() * sizeof(double), v.length());
+            return RC::INVALID_ARGUMENT;
+          }
+          // 先置 is_null 标志位为 0
+          table_record.set_field(f.offset(), 1, "\0");
+          // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
+          RC rc = set_text_and_store_record(
+              v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
+          if (OB_FAIL(rc)) {
+            LOG_WARN("failed to write text into text_buffer_pool_");
+            return rc;
+          }
+        } else {
+          rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
+          if (OB_FAIL(rc)) {
+            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+            return rc;
+          }
+        }
+      } break;
+      case AttrType::CHARS: {
+        // text 不应处理，因为 text 的 value 长度是变长的
+        if (f.type() == AttrType::TEXTS) {
+          // 检查 text 是否超过限制
+          if (v.length() > TEXT_MAX_SIZE) {
+            LOG_WARN("text length is too large: %d", v.length());
+            return RC::INVALID_ARGUMENT;
+          }
+          // 先置 is_null 标志位为 0
+          table_record.set_field(f.offset(), 1, "\0");
+          // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
+          RC rc = set_text_and_store_record(
+              v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
+          if (OB_FAIL(rc)) {
+            LOG_WARN("failed to write text into text_buffer_pool_");
+            return rc;
+          }
+          break;
+        }
+        auto zeros = std::vector<char>(f.len(), '\0');
+        rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
+        if (OB_FAIL(rc)) {
+          LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+          return rc;
+        }
+        [[fallthrough]];
+      }
+      default: {
+        ASSERT((size_t)f.nullable() <= 1, "we assume that casting a bool value to an integer returns either a 0 or an 1.");
+        // 先置 is_null 标志位为 0
+        table_record.set_field(f.offset(), f.nullable(), "\0");
+        // 然后修改值
+        rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
+        if (OB_FAIL(rc)) {
+          LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
+          return rc;
+        }
+      } break;
+    }
+  }
+
+  // TODO(zyq): handle indexes
+
+  rc = record_handler_->update_record(table_record);
+  if (OB_FAIL(rc))
+  {
+    LOG_WARN("zyq: update_record failed, rc=%s", strrc(rc));
+    return rc;
+  }
+
+  return RC::SUCCESS;
+}
+
 RC Table::insert_entry_of_indexes(const char *record, const RID &rid)
 {
   RC rc = RC::SUCCESS;

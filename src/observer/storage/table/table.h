@@ -94,6 +94,7 @@ public:
   RC delete_record(const Record &record);
   RC delete_record(const RID &rid);
   RC get_record(const RID &rid, Record &record) const;
+  RC update_record(Record &record, const std::vector<std::pair<FieldMeta, Value>> &value);
 
   RC recover_insert_record(Record &record);
 

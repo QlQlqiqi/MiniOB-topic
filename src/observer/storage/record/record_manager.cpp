@@ -648,6 +648,21 @@ RC RecordFileHandler::delete_record(const RID *rid)
   return rc;
 }
 
+RC RecordFileHandler::update_record(Record &record)
+{
+  RC rc = RC::SUCCESS;
+
+  unique_ptr<RecordPageHandler> record_page_handler(RecordPageHandler::create(storage_format_));
+
+  rc = record_page_handler->init(*disk_buffer_pool_, *log_handler_, record.rid().page_num, ReadWriteMode::READ_WRITE);
+
+  if (OB_FAIL(rc)) {
+    LOG_ERROR("failed to init record page handler. page num=%d, rc=%s", record.rid().page_num, strrc(rc));
+    return rc;
+  }
+  return record_page_handler->update_record(record.rid(), record.data());
+}
+
 RC RecordFileHandler::get_record(const RID &rid, Record &record)
 {
   unique_ptr<RecordPageHandler> page_handler(RecordPageHandler::create(storage_format_));

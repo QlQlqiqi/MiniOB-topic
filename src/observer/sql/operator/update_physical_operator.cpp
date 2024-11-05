@@ -24,37 +24,35 @@ UpdatePhysicalOperator::UpdatePhysicalOperator(
     : table_(table), values_(std::move(values))
 {}
 
-RC UpdatePhysicalOperator::rollback(
-    Trx *trx, std::vector<Record> &deleted_records, std::vector<Record> &inserted_records) const
-{
-  for (auto &record : inserted_records) {
-    RC rc = trx->delete_record(table_, record);
-    if (OB_FAIL(rc)) {
-      LOG_WARN("failed to rollback in delete records: %s", strrc(rc));
-      return rc;
-    }
-  }
-  for (auto &record : deleted_records) {
-    RC rc = trx->insert_record(table_, record);
-    if (OB_FAIL(rc)) {
-      LOG_WARN("failed to rollback in insert records: %s", strrc(rc));
-      return rc;
-    }
-  }
-  LOG_INFO("rollback records success");
-  return RC::SUCCESS;
-}
+// RC UpdatePhysicalOperator::rollback(
+//     Trx *trx, std::vector<Record> &deleted_records, std::vector<Record> &inserted_records) const
+// {
+//   for (auto &record : inserted_records) {
+//     RC rc = trx->delete_record(table_, record);
+//     if (OB_FAIL(rc)) {
+//       LOG_WARN("failed to rollback in delete records: %s", strrc(rc));
+//       return rc;
+//     }
+//   }
+//   for (auto &record : deleted_records) {
+//     RC rc = trx->insert_record(table_, record);
+//     if (OB_FAIL(rc)) {
+//       LOG_WARN("failed to rollback in insert records: %s", strrc(rc));
+//       return rc;
+//     }
+//   }
+//   LOG_INFO("rollback records success");
+//   return RC::SUCCESS;
+// }
 
-// TODO(qiqi): 这里有性能问题，在这 delete 和 insert 阶段中，都会将 record 深度复制一遍
+// TODO(qiqi): 这里有性能问题，在这 delete 和 insert 阶段中，都会将 record 深度复制一遍 (zyq:现在在Table::update_record存在复制)
 RC UpdatePhysicalOperator::open(Trx *trx)
 {
   if (children_.empty()) {
     return RC::SUCCESS;
   }
 
-  std::unique_ptr<PhysicalOperator> &child = children_[0];
-
-  RC rc = child->open(trx);
+  RC rc = children_[0]->open(trx);
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to open child operator: %s", strrc(rc));
     return rc;
@@ -62,46 +60,47 @@ RC UpdatePhysicalOperator::open(Trx *trx)
 
   trx_ = trx;
 
-  RowTuple *row_tuple = nullptr;
-  while (OB_SUCC(rc = child->next())) {
+  return RC::SUCCESS;
+}
+
+RC UpdatePhysicalOperator::next()
+{
+  RC rc = RC::SUCCESS;
+  if (children_.empty())
+  {
+    return RC::RECORD_EOF;
+  }
+
+  auto child = children_[0].get();
+
+  while (RC::SUCCESS == (rc = child->next()))
+  {
     Tuple *tuple = child->current_tuple();
-    if (nullptr == tuple) {
+    if (!tuple)
+    {
       LOG_WARN("failed to get current record: %s", strrc(rc));
       return rc;
     }
 
-    row_tuple = static_cast<RowTuple *>(tuple);
-    Record   &record    = row_tuple->record();
-    records_.emplace_back(std::move(record));
-  }
+    RowTuple *row_tuple = static_cast<RowTuple *>(tuple);
 
-  if (rc != RC::RECORD_EOF)
-  {
-    return rc;
-  }
+    auto match = [](FieldMeta &f, Value &v) {
+      if (auto ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
+        if (f.nullable() && v.attr_type() == AttrType::NULLS) {
+          return RC::SUCCESS;
+        }
+        Value t;
+        if (OB_FAIL(Value::strictly_cast_to(v, ftype, t))) {
+          return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+        }
+        v = t;
+      }
+      return RC::SUCCESS;
+    };
 
-  child->close();
-
-  // TODO(qiqi): 因为目前没有 trx 功能，所以需要手动恢复
-  std::vector<Record> deleted_records;
-  std::vector<Record> inserted_records;
-
-  for (Record &record : records_){
-    Record table_record;
-    rc = table_->get_record(record.rid(), table_record);
-    if (OB_FAIL(rc)) {
-      LOG_WARN("failed to get record. rid=%d, rc=%s", record.rid(), strrc(rc));
-      trx->rollback();
-      rollback(trx, deleted_records, inserted_records);
-      return rc;
-    }
-
-    // 1. prepare a record...
+    std::vector<std::pair<FieldMeta, Value>> raw_values;
     for (auto &[f, expr] : values_) {
       Value v;
-      if (nullptr == row_tuple) {
-        return RC::INTERNAL;
-      }
       RC rc = expr->get_value(*row_tuple, v);
       if (OB_FAIL(rc)) {
         if (rc == RC::RECORD_EOF) {
@@ -110,30 +109,6 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           return rc;
         }
       }
-
-      auto match = [](FieldMeta &f, Value &v) {
-        if (auto ftype = f.type(), vtype = v.attr_type(); ftype != vtype) {
-          if (f.nullable() && v.attr_type() == AttrType::NULLS) {
-            return RC::SUCCESS;
-          }
-          Value t;
-          if (OB_FAIL(Value::strictly_cast_to(v, ftype, t))) {
-            return RC::SCHEMA_FIELD_TYPE_MISMATCH;
-          }
-          v = t;
-        }
-        return RC::SUCCESS;
-      };
-
-      // 读取 text 内容
-      // if (f.type() == AttrType::TEXTS && !v.is_null()) {
-      //   ASSERT(v.attr_type() == AttrType::CHARS, "value must be chars");
-      //   RC rc = table_->get_text_from_record(record.data() + f.offset() + f.nullable(), v);
-      //   if (RC::SUCCESS != rc) {
-      //     LOG_WARN("Failed to read text rc=%s", strrc(rc));
-      //     return rc;
-      //   }
-      // }
 
       rc = match(f, v);
       if (OB_FAIL(rc)) {
@@ -155,121 +130,21 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         }
       }
 
-      switch (v.attr_type()) {
-        case AttrType::NULLS: {
-          assert(f.nullable());
-          auto ones = std::vector<char>(f.len(), '\1');
-          rc        = table_record.set_field(f.offset(), f.len(), ones.data());
-          if (OB_FAIL(rc)) {
-            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-            trx->rollback();
-            return rc;
-          }
-        } break;
-        case AttrType::VECTORS: {
-          // high vector 与 text 处理方式类似
-          if (f.high_vector()) {
-            // 检查 high vector dim
-            if (f.dim() * sizeof(double) != v.length()) {
-              LOG_WARN("high field's length %d should be the same as value's %d", f.dim() * sizeof(double), v.length());
-              trx->rollback();
-              return RC::INVALID_ARGUMENT;
-            }
-            // 先置 is_null 标志位为 0
-            table_record.set_field(f.offset(), 1, "\0");
-            // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
-            RC rc = table_->set_text_and_store_record(
-                v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
-            if (OB_FAIL(rc)) {
-              LOG_WARN("failed to write text into text_buffer_pool_");
-              trx->rollback();
-              return rc;
-            }
-          } else {
-            rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
-            if (OB_FAIL(rc)) {
-              LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-              trx->rollback();
-              return rc;
-            }
-          }
-        } break;
-        case AttrType::CHARS: {
-          // text 不应处理，因为 text 的 value 长度是变长的
-          if (f.type() == AttrType::TEXTS) {
-            // 检查 text 是否超过限制
-            if (v.length() > TEXT_MAX_SIZE) {
-              LOG_WARN("text length is too large: %d", v.length());
-              trx->rollback();
-              return RC::INVALID_ARGUMENT;
-            }
-            // 先置 is_null 标志位为 0
-            table_record.set_field(f.offset(), 1, "\0");
-            // 为了下面 insert 的使用，这里先将目标内容插入到 text buffer pool 中
-            RC rc = table_->set_text_and_store_record(
-                v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
-            if (OB_FAIL(rc)) {
-              LOG_WARN("failed to write text into text_buffer_pool_");
-              trx->rollback();
-              return rc;
-            }
-            break;
-          }
-          auto zeros = std::vector<char>(f.len(), '\0');
-          rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
-          if (OB_FAIL(rc)) {
-            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-            trx->rollback();
-            return rc;
-          }
-          [[fallthrough]];
-        }
-        default: {
-          ASSERT((size_t)f.nullable() <= 1, "we assume that casting a bool value to an integer returns either a 0 or an 1.");
-          // 先置 is_null 标志位为 0
-          table_record.set_field(f.offset(), f.nullable(), "\0");
-          // 然后修改值
-          rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
-          if (OB_FAIL(rc)) {
-            LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-            trx->rollback();
-            return rc;
-          }
-        } break;
-      }
+      raw_values.emplace_back(f, v);
     }
 
-    // 2. remove old record...
-    rc = trx->delete_record(table_, record);
-    if (OB_FAIL(rc)) {
-      sql_debug("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
-      LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
-      trx->rollback();
-      rollback(trx, deleted_records, inserted_records);
-      return rc;
-    }
-    Record tmp1 = record;
-    tmp1.copy_data(record.data(), record.len());
-    deleted_records.emplace_back(tmp1);
-
-    // 3. insert new record...
-    rc = trx->insert_record(table_, table_record);
-    if (OB_FAIL(rc)) {
-      sql_debug("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
-      LOG_WARN("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
-      trx->rollback();
-      rollback(trx, deleted_records, inserted_records);
-      return rc;
-    }
-    Record tmp2 = table_record;
-    tmp2.copy_data(table_record.data(), table_record.len());
-    inserted_records.emplace_back(tmp2);
+    rc = trx_->update_record(table_, row_tuple->record(), raw_values);
   }
 
-  return RC::SUCCESS;
-
+  return RC::RECORD_EOF;
 }
 
-RC UpdatePhysicalOperator::next() { return RC::RECORD_EOF; }
 
-RC UpdatePhysicalOperator::close() { return RC::SUCCESS; }
+
+RC UpdatePhysicalOperator::close()
+{
+  if (!children_.empty()) {
+    return children_[0]->close();
+  }
+  return RC::SUCCESS;
+}
