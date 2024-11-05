@@ -24,27 +24,6 @@ UpdatePhysicalOperator::UpdatePhysicalOperator(
     : table_(table), values_(std::move(values))
 {}
 
-RC UpdatePhysicalOperator::rollback(
-    Trx *trx, std::vector<Record> &deleted_records, std::vector<Record> &inserted_records) const
-{
-  for (auto &record : inserted_records) {
-    RC rc = trx->delete_record(table_, record);
-    if (OB_FAIL(rc)) {
-      LOG_WARN("failed to rollback in delete records: %s", strrc(rc));
-      return rc;
-    }
-  }
-  for (auto &record : deleted_records) {
-    RC rc = trx->insert_record(table_, record);
-    if (OB_FAIL(rc)) {
-      LOG_WARN("failed to rollback in insert records: %s", strrc(rc));
-      return rc;
-    }
-  }
-  LOG_INFO("rollback records success");
-  return RC::SUCCESS;
-}
-
 // TODO(qiqi): 这里有性能问题，在这 delete 和 insert 阶段中，都会将 record 深度复制一遍
 RC UpdatePhysicalOperator::open(Trx *trx)
 {
@@ -82,27 +61,25 @@ RC UpdatePhysicalOperator::open(Trx *trx)
 
   child->close();
 
-  // TODO(qiqi): 因为目前没有 trx 功能，所以需要手动恢复
-  std::vector<Record> deleted_records;
-  std::vector<Record> inserted_records;
+  return RC::SUCCESS;
+}
 
-  for (Record &record : records_){
+RC UpdatePhysicalOperator::next()
+{
+  RC rc = RC::SUCCESS;
+
+  for (Record &record : records_) {
     Record table_record;
     rc = table_->get_record(record.rid(), table_record);
     if (OB_FAIL(rc)) {
       LOG_WARN("failed to get record. rid=%d, rc=%s", record.rid(), strrc(rc));
-      trx->rollback();
-      rollback(trx, deleted_records, inserted_records);
       return rc;
     }
 
     // 1. prepare a record...
     for (auto &[f, expr] : values_) {
       Value v;
-      if (nullptr == row_tuple) {
-        return RC::INTERNAL;
-      }
-      RC rc = expr->get_value(*row_tuple, v);
+      RC rc = expr->get_value(RowTuple{}, v);
       if (OB_FAIL(rc)) {
         if (rc == RC::RECORD_EOF) {
           v.set_null();
@@ -125,16 +102,6 @@ RC UpdatePhysicalOperator::open(Trx *trx)
         return RC::SUCCESS;
       };
 
-      // 读取 text 内容
-      // if (f.type() == AttrType::TEXTS && !v.is_null()) {
-      //   ASSERT(v.attr_type() == AttrType::CHARS, "value must be chars");
-      //   RC rc = table_->get_text_from_record(record.data() + f.offset() + f.nullable(), v);
-      //   if (RC::SUCCESS != rc) {
-      //     LOG_WARN("Failed to read text rc=%s", strrc(rc));
-      //     return rc;
-      //   }
-      // }
-
       rc = match(f, v);
       if (OB_FAIL(rc)) {
         sql_debug("schema mismatch. field(%s) type: %d, value type: %d",
@@ -148,7 +115,7 @@ RC UpdatePhysicalOperator::open(Trx *trx)
       if (expr->type() == ExprType::SUBQUERY || expr->type() == ExprType::EXPRLIST)
       {
         auto sq_expr    = static_cast<const EnumerableExpr *>(expr.get());
-        if (sq_expr->get_value_with_eof(*row_tuple, v) != RC::RECORD_EOF)
+        if (sq_expr->get_value_with_eof(RowTuple{}, v) != RC::RECORD_EOF)
         {
           LOG_WARN("Expected a scalar expression to update.");
           return RC::INVALID_ARGUMENT;
@@ -162,7 +129,6 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           rc        = table_record.set_field(f.offset(), f.len(), ones.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-            trx->rollback();
             return rc;
           }
         } break;
@@ -172,7 +138,6 @@ RC UpdatePhysicalOperator::open(Trx *trx)
             // 检查 high vector dim
             if (f.dim() * sizeof(double) != v.length()) {
               LOG_WARN("high field's length %d should be the same as value's %d", f.dim() * sizeof(double), v.length());
-              trx->rollback();
               return RC::INVALID_ARGUMENT;
             }
             // 先置 is_null 标志位为 0
@@ -182,14 +147,12 @@ RC UpdatePhysicalOperator::open(Trx *trx)
                 v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
             if (OB_FAIL(rc)) {
               LOG_WARN("failed to write text into text_buffer_pool_");
-              trx->rollback();
               return rc;
             }
           } else {
             rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
             if (OB_FAIL(rc)) {
               LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-              trx->rollback();
               return rc;
             }
           }
@@ -200,7 +163,6 @@ RC UpdatePhysicalOperator::open(Trx *trx)
             // 检查 text 是否超过限制
             if (v.length() > TEXT_MAX_SIZE) {
               LOG_WARN("text length is too large: %d", v.length());
-              trx->rollback();
               return RC::INVALID_ARGUMENT;
             }
             // 先置 is_null 标志位为 0
@@ -210,7 +172,6 @@ RC UpdatePhysicalOperator::open(Trx *trx)
                 v.data(), v.length(), table_record.data() + f.offset() + f.nullable());
             if (OB_FAIL(rc)) {
               LOG_WARN("failed to write text into text_buffer_pool_");
-              trx->rollback();
               return rc;
             }
             break;
@@ -219,7 +180,6 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           rc         = table_record.set_field(f.offset(), f.len(), zeros.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-            trx->rollback();
             return rc;
           }
           [[fallthrough]];
@@ -232,44 +192,23 @@ RC UpdatePhysicalOperator::open(Trx *trx)
           rc = table_record.set_field(f.offset() + f.nullable(), v.length(), v.data());
           if (OB_FAIL(rc)) {
             LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
-            trx->rollback();
             return rc;
           }
         } break;
       }
     }
 
-    // 2. remove old record...
-    rc = trx->delete_record(table_, record);
+    rc = trx_->update_record(table_, record, table_record);
     if (OB_FAIL(rc)) {
-      sql_debug("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
-      LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
-      trx->rollback();
-      rollback(trx, deleted_records, inserted_records);
+      LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
       return rc;
     }
-    Record tmp1 = record;
-    tmp1.copy_data(record.data(), record.len());
-    deleted_records.emplace_back(tmp1);
-
-    // 3. insert new record...
-    rc = trx->insert_record(table_, table_record);
-    if (OB_FAIL(rc)) {
-      sql_debug("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
-      LOG_WARN("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
-      trx->rollback();
-      rollback(trx, deleted_records, inserted_records);
-      return rc;
-    }
-    Record tmp2 = table_record;
-    tmp2.copy_data(table_record.data(), table_record.len());
-    inserted_records.emplace_back(tmp2);
   }
 
-  return RC::SUCCESS;
-
+   return RC::RECORD_EOF;
 }
 
-RC UpdatePhysicalOperator::next() { return RC::RECORD_EOF; }
-
-RC UpdatePhysicalOperator::close() { return RC::SUCCESS; }
+RC UpdatePhysicalOperator::close()
+{
+  return RC::SUCCESS;
+}

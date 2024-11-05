@@ -186,6 +186,26 @@ RC MvccTrx::delete_record(Table *table, Record &record)
   return RC::SUCCESS;
 }
 
+RC MvccTrx::update_record(Table *table, Record &old_record, Record &new_record)
+{
+  RC rc = table->delete_record(old_record);
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to delete old record.");
+    return rc;
+  }
+  rc = table->insert_record(new_record);
+  if (OB_FAIL(rc)) {
+    RC rc2 = table->insert_record(old_record);
+    LOG_WARN("failed to insert new record, will rollback.");
+    if (OB_FAIL(rc2)) {
+      LOG_ERROR("failed to insert old record back, yet it has been removed by a failed update.");
+      return rc2;
+    }
+    return rc;
+  }
+  return rc;
+}
+
 RC MvccTrx::visit_record(Table *table, Record &record, ReadWriteMode mode)
 {
   Field begin_field;
