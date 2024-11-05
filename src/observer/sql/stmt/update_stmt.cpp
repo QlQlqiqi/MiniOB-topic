@@ -14,6 +14,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/stmt/update_stmt.h"
 #include "sql/stmt/select_stmt.h"
+#include "sql/parser/expression_binder.h"
 #include "common/log/log.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
@@ -78,7 +79,7 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
       SubQueryExpr* subquery_expr = static_cast<SubQueryExpr*>(value);
       Stmt * select_stmt = nullptr;
       // TODO(zyq): 如果必要，在此处支持update与关联子查询联用
-      if (RC rc = SelectStmt::create(db, *subquery_expr->sql_node(), select_stmt, {}); RC::SUCCESS != rc) {
+      if (RC rc = SelectStmt::create(db, *subquery_expr->sql_node(), select_stmt, nullptr); RC::SUCCESS != rc) {
         LOG_WARN("create sub query stmt failed, rc=%s", strrc(rc));
         return rc;
       }
@@ -90,14 +91,17 @@ RC UpdateStmt::create(Db *db, const UpdateSqlNode &update, Stmt *&stmt)
   }
 
   // filter
+  BinderContext binder_context;
   std::unordered_map<std::string, Table *> table_map;
   table_map.insert(std::pair<std::string, Table *>(std::string(table_name), table));
   if(!table_alias.empty()){
-      table_map.insert({table_alias, table});
+    binder_context.add_table(table_alias, table);
+  }else{
+    binder_context.add_table(table_name, table);
   }
   FilterStmt *filter_stmt = nullptr;
 
-  RC rc = FilterStmt::create(db, table, &table_map, update.conditions, filter_stmt);
+  RC rc = FilterStmt::create(db, table, binder_context, update.conditions, filter_stmt);
   if (rc != RC::SUCCESS)
   {
     LOG_WARN("failed to create filter statement. rc=%d:%s", rc, strrc(rc));

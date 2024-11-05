@@ -37,24 +37,20 @@ auto insert_alias_into_table_map (const std::string& alias, Table* table, unorde
   }
 }
 
-RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unordered_map<std::string, Table *> parents)
+RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, BinderContext* parent_context)
 {
   if (nullptr == db) {
     LOG_WARN("invalid argument. db is null");
     return RC::INVALID_ARGUMENT;
   }
 
-  BinderContext binder_context;
+  // 处理子查询时，这里区分上级查询和本级查询涉及的表，上级查询不做 tables.push_back(table);。
+  BinderContext binder_context(parent_context);
 
   // collect tables in `from` statement
   vector<Table *>                tables;
   unordered_map<string, Table *> table_map;
 
-  for (auto& [name, table] : parents) {
-    binder_context.add_table_without_check(table); 
-    // 处理子查询时，这里区分上级查询和本级查询涉及的表，上级查询不做 tables.push_back(table);。
-    table_map.insert({name, table});
-  }
 
   auto check_and_collect_table = [&](const std::string& relation, Table **table){
     const char *table_name = relation.c_str();
@@ -142,7 +138,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
       FilterStmt *filter_stmt = nullptr;
       rc                      = FilterStmt::create(db,
         table,
-        &table_map,
+        binder_context,
         condition.release(),
         filter_stmt);
       if (rc != RC::SUCCESS) {
@@ -180,7 +176,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
 
   //create filter stmt in having stmt
   FilterStmt *having_filter_stmt = nullptr;
-  RC          rc          = FilterStmt::create(db, nullptr, &table_map, select_sql.having_conditions.release(), having_filter_stmt);
+  RC          rc          = FilterStmt::create(db, nullptr, binder_context, select_sql.having_conditions.release(), having_filter_stmt);
   if (rc != RC::SUCCESS) {
     LOG_WARN("cannot construct filter stmt");
     return rc;
@@ -212,7 +208,7 @@ RC SelectStmt::create(Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unord
 
   // create filter statement in `where` statement
   FilterStmt *filter_stmt = nullptr;
-  rc          = FilterStmt::create(db, default_table, &table_map, select_sql.conditions.release(), filter_stmt);
+  rc          = FilterStmt::create(db, default_table, binder_context, select_sql.conditions.release(), filter_stmt);
   if (rc != RC::SUCCESS) {
     LOG_WARN("cannot construct filter stmt");
     return rc;

@@ -29,7 +29,7 @@ Table *BinderContext::find_table(const char *table_name) const
   }
 
   if(query_table_maps_.count(table_name) == 0){
-    return nullptr;
+    return parent_context_ ? parent_context_->find_table(table_name) : nullptr;
   }
 
   return query_table_maps_.at(table_name);

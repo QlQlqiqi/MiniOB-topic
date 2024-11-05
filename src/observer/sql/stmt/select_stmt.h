@@ -27,7 +27,7 @@ class FieldMeta;
 class FilterStmt;
 class Db;
 class Table;
-
+class BinderContext;
 /**
  * @brief 表示select语句
  * @ingroup Statement
@@ -42,7 +42,7 @@ public:
 
 public:
   static RC create(
-      Db *db, SelectSqlNode &select_sql, Stmt *&stmt, std::unordered_map<std::string, Table *> parents = {});
+      Db *db, SelectSqlNode &select_sql, Stmt *&stmt, BinderContext* parent_context = nullptr);
 
 public:
   const std::vector<Table *> &tables() const { return tables_; }

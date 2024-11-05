@@ -22,12 +22,20 @@ class BinderContext
 {
 public:
   BinderContext()          = default;
+  BinderContext(BinderContext *parent_context):parent_context_(parent_context){}
   virtual ~BinderContext() = default;
 
   RC add_table(Table *table) { 
+    if(table == nullptr){
+      return RC::INVALID_ARGUMENT;
+    }
+    return add_table(table->name(), table);
+  }
+
+  RC add_table(std::string table_name, Table *table) { 
     if(table!= nullptr){
-        if(query_table_maps_.contains(table->name()) == 0){
-            query_table_maps_[table->name()] = table;
+        if(query_table_maps_.contains(table_name) == 0){
+            query_table_maps_[table_name] = table;
             query_tables_.push_back(table);
         }else{
           return RC::INVALID_ARGUMENT;
@@ -47,9 +55,15 @@ public:
 
   const std::vector<Table *> &query_tables() const { return query_tables_; }
 
+  const BinderContext* parent_context() const {return parent_context_;}
+
+  void set_parent_context(BinderContext* parent_context){
+    this->parent_context_ = parent_context;
+  }
 private:
   std::vector<Table *> query_tables_;                        // 有序记录查询涉及的表
   std::unordered_map<std::string, Table*> query_table_maps_; // 记录表名/别名 到 Table* 的映射
+  BinderContext* parent_context_ = nullptr;
 };
 
 /**

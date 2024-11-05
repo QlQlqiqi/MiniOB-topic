@@ -23,7 +23,7 @@ See the Mulan PSL v2 for more details. */
 
 FilterStmt::~FilterStmt() = default;
 
-RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *table_map,
+RC FilterStmt::create(Db *db, Table *default_table, BinderContext& binder_context,
     const Expression *conditions, FilterStmt *&stmt)
 {
   free(stmt);
@@ -31,14 +31,7 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
   RC rc = RC::SUCCESS;
 
   FilterStmt *tmp_stmt    = new FilterStmt();
-  BinderContext binder_context;
 
-    // tmp_stmt->set_expr(conditions->Clone());
-    // auto condition_expr = tmp_stmt->expr_.get();
-  for (auto [table_name, table]:(*table_map)) {
-    binder_context.add_table(table);
-    if (OB_FAIL(rc)) { return rc; }
-  }
   // collect query fields in `select` statement
   vector<unique_ptr<Expression>> bound_expressions;
   ExpressionBinder               expression_binder(binder_context);
@@ -56,12 +49,12 @@ RC FilterStmt::create(Db *db, Table *default_table, std::unordered_map<std::stri
 
     ASSERT(filter_expressions.size() == 1, "the number of bounded expr should be one");
 
-    auto prepare_subquery = [db, table_map](Expression* expr) {
+    auto prepare_subquery = [db, &binder_context](Expression* expr) {
       RC rc = RC::SUCCESS;
       if (expr->type() == ExprType::SUBQUERY) {
         auto  subquery_expr = static_cast<SubQueryExpr *>(expr);
         Stmt *select_stmt   = nullptr;
-        if (RC rc = SelectStmt::create(db, *subquery_expr->sql_node(), select_stmt, *table_map); RC::SUCCESS != rc)
+        if (RC rc = SelectStmt::create(db, *subquery_expr->sql_node(), select_stmt, &binder_context); RC::SUCCESS != rc)
         {
           return rc;
         }
