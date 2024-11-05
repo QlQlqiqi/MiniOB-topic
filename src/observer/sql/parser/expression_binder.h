@@ -22,51 +22,48 @@ class BinderContext
 {
 public:
   BinderContext()          = default;
+  BinderContext(BinderContext *parent_context):parent_context_(parent_context){}
   virtual ~BinderContext() = default;
 
-  void add_table(Table *table) { 
-    if(table!= nullptr){
-        if(table_set_.count(table) == 0){
-            query_table_maps_[table->name()] = table;
-            table_full_names_.insert(table->name());
-            table_set_.insert(table);
-            query_tables_.push_back(table);
-        }
+  RC add_table(Table *table) { 
+    if(table == nullptr){
+      return RC::INVALID_ARGUMENT;
     }
+    return add_table(table->name(), table);
   }
 
-  // 调用前必须保证已经调用了 add_table
-  // 此处也可能传入表全名
-  RC add_alias(const std::string& table_name, Table* table) {
-    if (table_full_names_.contains(table_name))
-    {
-      return RC::SUCCESS;  // 此处不考虑 select * from a b, b a;
-    }
-
-    //query_table_map 映射存在，表示有相同别名或者表名已经存在映射
-    if(!table_aliases_.contains(table_name) && table_set_.contains(table)){
-      query_table_maps_.insert({table_name, table});
-      table_aliases_.insert(table_name);
-    } else {
-      LOG_WARN("zyq: add alias failed, because %s", table_aliases_.contains(table_name) ? "there have been it." : "we require you call add_table first.");
-
+  RC add_table(std::string table_name, Table *table) { 
+    if(table!= nullptr){
+        if(query_table_maps_.contains(table_name) == 0){
+            query_table_maps_[table_name] = table;
+            query_tables_.push_back(table);
+        }else{
+          return RC::INVALID_ARGUMENT;
+        }
+    }else{
       return RC::INVALID_ARGUMENT;
     }
     return RC::SUCCESS;
   }
 
+  void add_table_without_check(Table *table) {
+    query_table_maps_[table->name()] = table;
+    query_tables_.push_back(table);
+  }
+
   Table *find_table(const char *table_name) const;
 
   const std::vector<Table *> &query_tables() const { return query_tables_; }
-  const std::unordered_map<std::string, Table*> &query_table_maps() const { return query_table_maps_; }
 
+  const BinderContext* parent_context() const {return parent_context_;}
+
+  void set_parent_context(BinderContext* parent_context){
+    this->parent_context_ = parent_context;
+  }
 private:
   std::vector<Table *> query_tables_;                        // 有序记录查询涉及的表
   std::unordered_map<std::string, Table*> query_table_maps_; // 记录表名/别名 到 Table* 的映射
-
-  std::set<Table *>                       table_set_;        // 检查表是否已存在时用
-  std::set<std::string>                   table_full_names_; // 检查表全名是否已存在时用
-  std::set<std::string>                   table_aliases_;    // 检查表别名是否已存在时用
+  BinderContext* parent_context_ = nullptr;
 };
 
 /**

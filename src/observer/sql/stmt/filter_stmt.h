@@ -23,6 +23,7 @@ See the Mulan PSL v2 for more details. */
 class Db;
 class Table;
 class FieldMeta;
+class BinderContext;
 
 struct FilterObj
 {
@@ -48,7 +49,7 @@ public:
   std::unique_ptr<Expression> &expr() { return expr_; }
 
 public:
-  static RC create(Db *db, Table *default_table, std::unordered_map<std::string, Table *> *tables,
+  static RC create(Db *db, Table *default_table, BinderContext& binder_context,
       const Expression *conditions, FilterStmt *&stmt);
 
 
