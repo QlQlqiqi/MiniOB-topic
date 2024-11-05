@@ -806,9 +806,16 @@ RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, V
   }
 
   rc = insert_entry_of_indexes(new_record.data(), new_record.rid());
-  if (OB_FAIL(rc))
-  {
-    // TODO(zyq): rollback
+  if (rc != RC::SUCCESS) {
+    // 可能出现了键值重复
+    // 如果 key 重复，则不能删除 index 的 record
+    if (rc != RC::RECORD_DUPLICATE_KEY) {
+      RC rc2 = delete_entry_of_indexes(record.data(), record.rid(), false /*error_on_not_exists*/);
+      if (rc2 != RC::SUCCESS) {
+        LOG_ERROR("Failed to rollback index data when insert index entries failed. table name=%s, rc=%d:%s",
+                name(), rc2, strrc(rc2));
+      }
+    }
     return rc;
   }
 
@@ -822,7 +829,7 @@ RC Table::update_record(Record &record, const std::vector<std::pair<FieldMeta, V
   delete_entry_of_indexes(record.data(), record.rid(), false);
   if (OB_FAIL(rc))
   {
-    // TODO(zyq): rollback
+    LOG_ERROR("failed to delete indexes");
     return rc;
   }
 
