@@ -198,19 +198,9 @@ RC UpdatePhysicalOperator::next()
       }
     }
 
-    // 2. remove old record...
-    rc = trx_->delete_record(table_, record);
+    rc = trx_->update_record(table_, record, table_record);
     if (OB_FAIL(rc)) {
-      sql_debug("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
-      LOG_WARN("failed to remove old record. rid=%d, rc=%s", record.rid(), strrc(rc));
-      return rc;
-    }
-
-    // 3. insert new record...
-    rc = trx_->insert_record(table_, table_record);
-    if (OB_FAIL(rc)) {
-      sql_debug("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
-      LOG_WARN("failed to insert new record. rid=%d, rc=%s", table_record.rid(), strrc(rc));
+      LOG_WARN("failed to update record. rid=%d, rc=%s", record.rid(), strrc(rc));
       return rc;
     }
   }
