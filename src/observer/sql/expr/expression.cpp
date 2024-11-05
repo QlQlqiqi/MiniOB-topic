@@ -324,6 +324,16 @@ RC ComparisonExpr::get_value(const Tuple &tuple, Value &value) const
 
       rc = compare_value(left_value, right_value, bool_value);
 
+      if (left_->type() == ExprType::SUBQUERY || left_->type() == ExprType::EXPRLIST)
+      {
+        auto sq_expr    = static_cast<const EnumerableExpr *>(left_.get());
+        if (sq_expr->get_value_with_eof(tuple, left_value) != RC::RECORD_EOF)
+        {
+          LOG_WARN("Expected a scalar expression to compare.");
+          return RC::INVALID_ARGUMENT;
+        }
+      }
+
       if (right_->type() == ExprType::SUBQUERY || right_->type() == ExprType::EXPRLIST)
       {
         auto sq_expr    = static_cast<const EnumerableExpr *>(right_.get());
