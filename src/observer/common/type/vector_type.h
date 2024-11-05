@@ -15,7 +15,7 @@ See the Mulan PSL v2 for more details. */
 // vector 维度不得超过
 const int VECTOR_MAX_SIZE = 16000;
 // 如果维度超过这个，则被视为高维度
-const int VECTOR_HIGH_DIM = 10;
+const int VECTOR_HIGH_DIM = 1;
 
 /**
  * @brief 向量类型

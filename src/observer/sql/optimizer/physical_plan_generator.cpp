@@ -308,6 +308,7 @@ RC PhysicalPlanGenerator::create_plan(VectorIndexScanLogicalOperator &vector_ind
   auto vec_operator = std::make_unique<VectorIndexScanPhysicalOperator>(vector_index_scan_oper.table(),
       vector_index_scan_oper.index(),
       vector_index_scan_oper.field_meta().get(),
+      vector_index_scan_oper.expr().get(),
       vector_index_scan_oper.order_op(),
       vector_index_scan_oper.limit_num());
   if (child_phy_oper) {

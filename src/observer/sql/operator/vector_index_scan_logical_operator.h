@@ -26,9 +26,9 @@ See the Mulan PSL v2 for more details. */
 class VectorIndexScanLogicalOperator : public LogicalOperator
 {
 public:
-  VectorIndexScanLogicalOperator(
-      Table *table, Index *index, const FieldMeta *field_meta, const OrderOp order_op, const int limit_num)
-      : table_(table), index_(index), order_op_(order_op), limit_num_(limit_num)
+  VectorIndexScanLogicalOperator(Table *table, Index *index, const FieldMeta *field_meta,
+      const Expression *expr, const OrderOp order_op, const int limit_num)
+      : table_(table), index_(index), expr_(expr->Clone()), order_op_(order_op), limit_num_(limit_num)
   {
     // 如果没有 field meta 也可以
     if (field_meta == nullptr) {
@@ -46,6 +46,7 @@ public:
   ReadWriteMode                    read_write_mode() const { return mode_; }
   Index                           *index() { return index_; }
   const std::shared_ptr<FieldMeta> field_meta() const { return field_meta_; }
+  const std::unique_ptr<Expression> &expr() const { return expr_; }
   OrderOp                          order_op() const { return order_op_; }
   int                              limit_num() const { return limit_num_; }
 
@@ -54,6 +55,7 @@ private:
   ReadWriteMode              mode_  = ReadWriteMode::READ_ONLY;
   Index                     *index_;
   std::shared_ptr<FieldMeta> field_meta_;
+  std::unique_ptr<Expression> expr_ = nullptr;
   OrderOp                    order_op_;
   int                        limit_num_;
 };

@@ -171,7 +171,7 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
       if (left && right &&
           ((left->type() == ExprType::FIELD && right->type() == ExprType::VALUE) ||
               (left->type() == ExprType::VALUE && right->type() == ExprType::FIELD))) {
-        // 4. 在这个 field 上有对应的 ivafflat index
+        // 4. 在这个 field 上有对应的 ivafflat index，且是相同的 function type
         auto field_name =
             static_cast<FieldExpr *>(left->type() == ExprType::FIELD ? left.get() : right.get())->field_name();
         for (auto table : tables) {
@@ -179,11 +179,13 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
             auto &index_meta = index->index_meta();
             if (index_meta.is_ivfflat() && index_meta.field().size() == 1 && index_meta.field().at(0) == field_name) {
               auto ivafflat_index = dynamic_cast<const IvfflatIndex *>(index);
-              if (ivafflat_index != nullptr) {
+              if (ivafflat_index != nullptr &&
+                  ivafflat_index->func_type() == static_cast<int>(order_by_expr->function_type())) {
                 // 5. 将 limit、order by 改为 vector index scan
                 vec_index_scan_oper = std::make_unique<VectorIndexScanLogicalOperator>(table,
                     index,
                     &index->field_metas()[0],
+                    order_by_expr,
                     static_cast<OrderByLogicalOperator *>(order_by_oper.get())->order_ops()[0],
                     static_cast<LimitLogicalOperator *>(limit_oper.get())->num_);
                 table_oper          = std::move(vec_index_scan_oper);

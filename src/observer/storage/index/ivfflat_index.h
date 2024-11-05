@@ -44,6 +44,8 @@ public:
   IndexScanner *create_scanner(const char *left_key, int left_len, bool left_inclusive, const char *right_key,
       int right_len, bool right_inclusive, const std::shared_ptr<FieldMeta> field_meta = nullptr) override;
 
+  int func_type() const { return func_type_; }
+
 private:
   BplusTreeHandler index_handler_;
   Table           *table_     = nullptr;
