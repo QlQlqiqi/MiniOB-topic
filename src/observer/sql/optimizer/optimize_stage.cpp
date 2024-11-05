@@ -116,5 +116,5 @@ RC OptimizeStage::create_logical_plan(SQLStageEvent *sql_event, unique_ptr<Logic
     return RC::UNIMPLEMENTED;
   }
 
-  return logical_plan_generator_.create(stmt, logical_operator);
+  return logical_plan_generator_.create(stmt, logical_operator, sql_event);
 }

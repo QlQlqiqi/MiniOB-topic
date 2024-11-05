@@ -228,6 +228,7 @@ struct AttrInfoSqlNode
   size_t      dim;  ///< number of vector's dim
 };
 
+class ParsedSqlNode;
 /**
  * @brief 描述一个create table语句
  * @ingroup SQLParser
@@ -238,6 +239,7 @@ struct CreateTableSqlNode
   std::string                  relation_name;   ///< Relation name
   std::vector<AttrInfoSqlNode> attr_infos;      ///< attributes
   std::string                  storage_format;  ///< storage format
+  std::unique_ptr<ParsedSqlNode> select_sql_node;   ///< select clause
 };
 
 /**
@@ -315,8 +317,6 @@ struct SetVariableSqlNode
   Value       value;
 };
 
-
-class ParsedSqlNode;
 
 /**
  * @brief 描述一个create view语句

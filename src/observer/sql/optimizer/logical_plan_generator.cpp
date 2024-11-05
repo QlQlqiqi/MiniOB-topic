@@ -32,7 +32,7 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/view_get_logical_operator.h"
 #include "sql/operator/group_by_logical_operator.h"
 #include "sql/operator/order_by_logical_operator.h"
-
+#include "sql/operator/create_table_select_logical_operator.h"
 
 #include "sql/operator/vector_index_scan_logical_operator.h"
 #include "sql/stmt/calc_stmt.h"
@@ -42,15 +42,21 @@ See the Mulan PSL v2 for more details. */
 #include "sql/stmt/insert_stmt.h"
 #include "sql/stmt/update_stmt.h"
 #include "sql/stmt/select_stmt.h"
+#include "sql/stmt/create_table_stmt.h"
 #include "sql/stmt/stmt.h"
 #include "sql/expr/expression_iterator.h"
 #include "storage/index/ivfflat_index.h"
+#include "sql/executor/create_table_executor.h"
 
+#include "event/session_event.h"
+#include "event/sql_event.h"
+#include "session/session.h"
+#include "storage/db/db.h"
 
 using namespace std;
 using namespace common;
 
-RC LogicalPlanGenerator::create(Stmt *stmt, unique_ptr<LogicalOperator> &logical_operator)
+RC LogicalPlanGenerator::create(Stmt *stmt, unique_ptr<LogicalOperator> &logical_operator, SQLStageEvent *event)
 {
   RC rc = RC::SUCCESS;
   switch (stmt->type()) {
@@ -89,6 +95,16 @@ RC LogicalPlanGenerator::create(Stmt *stmt, unique_ptr<LogicalOperator> &logical
 
       rc = create_plan(explain_stmt, logical_operator);
     } break;
+    
+    case StmtType::CREATE_TABLE: {
+      CreateTableStmt *create_table_stmt = static_cast<CreateTableStmt *>(stmt);
+      if (create_table_stmt->is_table_select()) {
+        rc = create_plan_with_event(create_table_stmt, logical_operator, event);
+      }else{
+        rc = RC::UNIMPLEMENTED;
+      }
+    } break;
+
     default: {
       rc = RC::UNIMPLEMENTED;
     }
@@ -107,9 +123,10 @@ RC LogicalPlanGenerator::create_plan(CalcStmt *calc_stmt, std::unique_ptr<Logica
   return RC::SUCCESS;
 }
 
-RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<LogicalOperator> &logical_operator, ReadWriteMode read_write_mode)
+RC LogicalPlanGenerator::create_plan(
+    SelectStmt *select_stmt, unique_ptr<LogicalOperator> &logical_operator, ReadWriteMode read_write_mode)
 {
-  RC rc = RC::SUCCESS;
+  RC                           rc        = RC::SUCCESS;
   unique_ptr<LogicalOperator> *last_oper = nullptr;
 
   unique_ptr<LogicalOperator> table_oper(nullptr);
@@ -118,18 +135,18 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
 
   const std::vector<Table *> &tables = select_stmt->tables();
 
-  //join operator
+  // join operator
   for (Table *table : tables) {
     unique_ptr<LogicalOperator> table_get_oper = nullptr;
 
-    switch(table->type()){
-      case TableType::TABLE:{
+    switch (table->type()) {
+      case TableType::TABLE: {
         table_get_oper.reset(new TableGetLogicalOperator(table, read_write_mode));
       } break;
-      case TableType::VIEW:{
-        table_get_oper.reset(new ViewGetLogicalOperator(static_cast<View*>(table), read_write_mode));
+      case TableType::VIEW: {
+        table_get_oper.reset(new ViewGetLogicalOperator(static_cast<View *>(table), read_write_mode));
       } break;
-      default:{
+      default: {
         ASSERT(false, "unknown table type");
         return RC::INTERNAL;
       }
@@ -138,11 +155,11 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
     if (table_oper == nullptr) {
       table_oper = std::move(table_get_oper);
     } else {
-      unique_ptr<LogicalOperator> predicate_oper;
+      unique_ptr<LogicalOperator>     predicate_oper;
       unique_ptr<JoinLogicalOperator> join_oper = std::make_unique<JoinLogicalOperator>();
-      if(select_stmt->join_conditions().size() != 0 && select_stmt->join_conditions().count(table) != 0){
+      if (select_stmt->join_conditions().size() != 0 && select_stmt->join_conditions().count(table) != 0) {
         FilterStmt *filter_stmt = select_stmt->join_conditions()[table].get();
-        rc = create_plan(filter_stmt, predicate_oper);
+        rc                      = create_plan(filter_stmt, predicate_oper);
         if (rc != RC::SUCCESS) {
           return rc;
         }
@@ -179,7 +196,7 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
 
   // 对于向量索引，需要使用 ivafflat 将其重写，详细可参考
   // @see: { https://oceanbase.github.io/miniob/game/miniob-vectordb/#_7 }
-  bool rewrited = false;
+  bool                                            rewrited = false;
   std::unique_ptr<VectorIndexScanLogicalOperator> vec_index_scan_oper;
   // 1. 有 limit 和 order by
   if (limit_oper && order_by_oper) {
@@ -211,7 +228,7 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
                     static_cast<OrderByLogicalOperator *>(order_by_oper.get())->order_ops()[0],
                     static_cast<LimitLogicalOperator *>(limit_oper.get())->num_);
                 table_oper          = std::move(vec_index_scan_oper);
-                rewrited = true;
+                rewrited            = true;
                 break;
               }
             }
@@ -221,7 +238,7 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
     }
   }
 
-  //where operator
+  // where operator
   unique_ptr<LogicalOperator> predicate_oper;
   rc = create_plan(select_stmt->filter_stmt(), predicate_oper);
   if (OB_FAIL(rc)) {
@@ -237,7 +254,7 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
     last_oper = &predicate_oper;
   }
 
-  //group by operator
+  // group by operator
   unique_ptr<LogicalOperator> group_by_oper;
   rc = create_group_by_plan(select_stmt, group_by_oper);
   if (OB_FAIL(rc)) {
@@ -253,7 +270,7 @@ RC LogicalPlanGenerator::create_plan(SelectStmt *select_stmt, unique_ptr<Logical
     last_oper = &group_by_oper;
   }
 
-  //having operator 
+  // having operator
   unique_ptr<LogicalOperator> having_predicate_oper;
 
   rc = create_plan(select_stmt->having_filter_stmt(), having_predicate_oper);
@@ -333,33 +350,30 @@ RC LogicalPlanGenerator::create_plan(InsertStmt *insert_stmt, unique_ptr<Logical
   Table        *table = insert_stmt->table();
   vector<Value> values(insert_stmt->values(), insert_stmt->values() + insert_stmt->value_amount());
 
-  if(table->type() == TableType::VIEW)
-  {
+  if (table->type() == TableType::VIEW) {
     LOG_WARN("InsertLogicalOperator: table type is VIEW");
-    View *view = static_cast<View*>(table);
-    if(!view->view_meta().is_insertable()){
-        LOG_WARN("this view cannot be inserted");
-        return RC::UNSUPPORTED;
+    View *view = static_cast<View *>(table);
+    if (!view->view_meta().is_insertable()) {
+      LOG_WARN("this view cannot be inserted");
+      return RC::UNSUPPORTED;
     }
     ASSERT(view->select_stmt()->tables().size() == 1, "view should have only one table");
-    Table* origin_table = const_cast<Table*>(view->origin_fields()[0]->table());
-    auto field_num = origin_table->table_meta().field_num();
+    Table        *origin_table = const_cast<Table *>(view->origin_fields()[0]->table());
+    auto          field_num    = origin_table->table_meta().field_num();
     vector<Value> view_insert_values;
     view_insert_values.resize(field_num);
-    for_each(view_insert_values.begin(), view_insert_values.end(), [&](Value &v){
-      v.set_null();
-    });
-    auto &origin_fields = view->origin_fields(); 
+    for_each(view_insert_values.begin(), view_insert_values.end(), [&](Value &v) { v.set_null(); });
+    auto &origin_fields = view->origin_fields();
     ASSERT(origin_fields.size() == values.size(), "values size should be equal to origin fields size");
-    for(size_t i = 0; i < origin_fields.size(); i++){
-      auto &field =  origin_fields[i];
+    for (size_t i = 0; i < origin_fields.size(); i++) {
+      auto &field = origin_fields[i];
       ASSERT(field != nullptr, "field should not be nullptr");
-      auto field_id = field->meta()->field_id();
+      auto field_id                = field->meta()->field_id();
       view_insert_values[field_id] = values[i];
     }
 
-    values = std::move(view_insert_values); 
-    table = origin_table;
+    values = std::move(view_insert_values);
+    table  = origin_table;
   }
   InsertLogicalOperator *insert_operator = new InsertLogicalOperator(table, values);
   logical_operator.reset(insert_operator);
@@ -369,16 +383,16 @@ RC LogicalPlanGenerator::create_plan(InsertStmt *insert_stmt, unique_ptr<Logical
 RC LogicalPlanGenerator::create_plan(UpdateStmt *update_stmt, unique_ptr<LogicalOperator> &logical_operator)
 {
   Table *table  = update_stmt->table();
-  auto  &values = const_cast<std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>>&>(update_stmt->values());
+  auto  &values = const_cast<std::vector<std::pair<FieldMeta, std::unique_ptr<Expression>>> &>(update_stmt->values());
 
   FilterStmt                 *filter_stmt = update_stmt->filter_stmt();
   unique_ptr<LogicalOperator> table_get_oper;
-  if(table->type() == TableType::VIEW){
-    if(!static_cast<View*>(table)->view_meta().is_updateable()){
+  if (table->type() == TableType::VIEW) {
+    if (!static_cast<View *>(table)->view_meta().is_updateable()) {
       return RC::INVALID_ARGUMENT;
     }
-    table_get_oper = make_unique<ViewGetLogicalOperator>(static_cast<View*>(table), ReadWriteMode::READ_WRITE);
-  }else{
+    table_get_oper = make_unique<ViewGetLogicalOperator>(static_cast<View *>(table), ReadWriteMode::READ_WRITE);
+  } else {
     table_get_oper = make_unique<TableGetLogicalOperator>(table, ReadWriteMode::READ_WRITE);
   }
 
@@ -446,14 +460,49 @@ RC LogicalPlanGenerator::create_plan(ExplainStmt *explain_stmt, unique_ptr<Logic
   return rc;
 }
 
+RC LogicalPlanGenerator::create_plan_with_event(
+    CreateTableStmt *create_table_stmt, std::unique_ptr<LogicalOperator> &logical_operator, SQLStageEvent *sql_event)
+{
+  RC rc = RC::SUCCESS;
+  ASSERT(create_table_stmt->is_table_select(), "create table stmt should be table select");
+  auto &select_stmt = create_table_stmt->select_stmt();
+  auto &table_name = create_table_stmt->table_name();
+
+  //生成select logical 算子
+  std::unique_ptr<LogicalOperator> select_logical_oper;
+  rc = create_plan(select_stmt.get(), select_logical_oper);
+  if(OB_FAIL(rc)){
+    return rc;
+  }
+
+  // 生成新表
+  CreateTableExecutor executor;
+  rc = executor.execute(sql_event);
+  if(OB_FAIL(rc)){
+    return rc;
+  }
+
+  Db *db = sql_event->session_event()->session()->get_current_db();
+  Table* table = db->find_table(table_name.c_str());
+
+  if(table == nullptr){
+    LOG_WARN("table %s not exist", table_name.c_str());
+    return RC::SCHEMA_TABLE_NOT_EXIST;
+  }
+
+  //生成table select logical 算子
+  logical_operator = make_unique<CreateTableSelectLogicalOperator>(table, std::move(select_logical_oper));
+  return rc;
+}
+
 RC LogicalPlanGenerator::create_group_by_plan(SelectStmt *select_stmt, unique_ptr<LogicalOperator> &logical_operator)
 {
-  vector<unique_ptr<Expression>>             &group_by_expressions = select_stmt->group_by();
-  vector<Expression *>                        aggregate_expressions;
-  vector<unique_ptr<Expression>>             &query_expressions = select_stmt->query_expressions();
-  auto                                       &having_filter_expression = select_stmt->having_filter_stmt()->expr();
+  vector<unique_ptr<Expression>> &group_by_expressions = select_stmt->group_by();
+  vector<Expression *>            aggregate_expressions;
+  vector<unique_ptr<Expression>> &query_expressions        = select_stmt->query_expressions();
+  auto                           &having_filter_expression = select_stmt->having_filter_stmt()->expr();
 
-  function<RC(std::unique_ptr<Expression> &)> collector         = [&](unique_ptr<Expression> &expr) -> RC {
+  function<RC(std::unique_ptr<Expression> &)> collector = [&](unique_ptr<Expression> &expr) -> RC {
     RC rc = RC::SUCCESS;
     if (expr->type() == ExprType::AGGREGATION) {
       expr->set_pos(aggregate_expressions.size() + group_by_expressions.size());
@@ -507,8 +556,8 @@ RC LogicalPlanGenerator::create_group_by_plan(SelectStmt *select_stmt, unique_pt
     collector(expression);
   }
 
-  //collect having aggregate expressions
-  if(having_filter_expression != nullptr){
+  // collect having aggregate expressions
+  if (having_filter_expression != nullptr) {
     collector(having_filter_expression);
   }
 
@@ -530,12 +579,15 @@ RC LogicalPlanGenerator::create_group_by_plan(SelectStmt *select_stmt, unique_pt
   return RC::SUCCESS;
 }
 
-RC LogicalPlanGenerator::create_order_by_plan(SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator){
+RC LogicalPlanGenerator::create_order_by_plan(
+    SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator)
+{
   auto &order_stmt = select_stmt->order_by();
-  if(order_stmt == nullptr || order_stmt->order_by_ops.empty()){
+  if (order_stmt == nullptr || order_stmt->order_by_ops.empty()) {
     return RC::SUCCESS;
   }
   assert(order_stmt->order_by_expressions.size() == order_stmt->order_by_ops.size());
-  logical_operator.reset(new OrderByLogicalOperator(std::move(order_stmt->order_by_expressions), std::move(order_stmt->order_by_ops)));
+  logical_operator.reset(
+      new OrderByLogicalOperator(std::move(order_stmt->order_by_expressions), std::move(order_stmt->order_by_ops)));
   return RC::SUCCESS;
 }

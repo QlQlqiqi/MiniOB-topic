@@ -35,6 +35,7 @@ enum class LogicalOperatorType
   CALC,
   TABLE_GET,   ///< 从表中获取数据
   VIEW_GET,    ///< 从视图中获取数据
+  TABLE_SELECT, ///< 从查询中建立表
   VECTOR_INDEX_SCAN,   ///< 从表中获取数据
   PREDICATE,   ///< 过滤，就是谓词
   PROJECTION,  ///< 投影，就是select

@@ -29,7 +29,9 @@ class UpdateStmt;
 class DeleteStmt;
 class ExplainStmt;
 class LimitStmt;
+class CreateTableStmt;
 class LogicalOperator;
+class SQLStageEvent;
 
 class LogicalPlanGenerator
 {
@@ -37,7 +39,7 @@ public:
   LogicalPlanGenerator()          = default;
   virtual ~LogicalPlanGenerator() = default;
 
-  static RC create(Stmt *stmt, std::unique_ptr<LogicalOperator> &logical_operator);
+  static RC create(Stmt *stmt, std::unique_ptr<LogicalOperator> &logical_operator, SQLStageEvent *sql_event = nullptr);
   static RC create_view_scan_plan(SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator, ReadWriteMode read_write_mode);
 
 private:
@@ -50,6 +52,7 @@ private:
   static RC create_plan(DeleteStmt *delete_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   static RC create_plan(ExplainStmt *explain_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
 
+  static RC create_plan_with_event(CreateTableStmt *create_table_stmt, std::unique_ptr<LogicalOperator> &logical_operator, SQLStageEvent* sql_event);
   static RC create_group_by_plan(SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
   static RC create_order_by_plan(SelectStmt *select_stmt, std::unique_ptr<LogicalOperator> &logical_operator);
 

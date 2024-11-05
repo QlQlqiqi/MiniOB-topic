@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include <vector>
 
 #include "sql/stmt/stmt.h"
+#include "sql/stmt/select_stmt.h"
 
 class Db;
 
@@ -29,9 +30,12 @@ class Db;
 class CreateTableStmt : public Stmt
 {
 public:
-  CreateTableStmt(
-      const std::string &table_name, const std::vector<AttrInfoSqlNode> &attr_infos, StorageFormat storage_format)
-      : table_name_(table_name), attr_infos_(attr_infos), storage_format_(storage_format)
+  CreateTableStmt(const std::string &table_name, std::vector<AttrInfoSqlNode> &&attr_infos,
+      StorageFormat storage_format, std::unique_ptr<SelectStmt> &&select_stmt)
+      : table_name_(table_name),
+        attr_infos_(std::move(attr_infos)),
+        storage_format_(storage_format),
+        select_stmt_(std::move(select_stmt))
   {}
   virtual ~CreateTableStmt() = default;
 
@@ -40,6 +44,10 @@ public:
   const std::string                  &table_name() const { return table_name_; }
   const std::vector<AttrInfoSqlNode> &attr_infos() const { return attr_infos_; }
   const StorageFormat                 storage_format() const { return storage_format_; }
+  const std::unique_ptr<SelectStmt>  &select_stmt() const { return select_stmt_; }
+  std::unique_ptr<SelectStmt>        &select_stmt() { return select_stmt_; }
+  const bool                          is_table_select() const { return select_stmt_ != nullptr; }
+  
 
   static RC            create(Db *db, const CreateTableSqlNode &create_table, Stmt *&stmt);
   static StorageFormat get_storage_format(const char *format_str);
@@ -48,4 +56,5 @@ private:
   std::string                  table_name_;
   std::vector<AttrInfoSqlNode> attr_infos_;
   StorageFormat                storage_format_;
+  std::unique_ptr<SelectStmt>  select_stmt_;
 };
