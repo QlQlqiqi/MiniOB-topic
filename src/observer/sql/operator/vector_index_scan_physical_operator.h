@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/expr/tuple.h"
 #include "sql/operator/physical_operator.h"
+#include "storage/index/ivfflat_index.h"
 #include "storage/record/record_manager.h"
 
 /**
@@ -27,7 +28,11 @@ class VectorIndexScanPhysicalOperator : public PhysicalOperator
 public:
   VectorIndexScanPhysicalOperator(Table *table, Index *index, const FieldMeta *field_meta, const Expression *expr,
       const OrderOp order_op, const int limit_num)
-      : table_(table), index_(index), expr_(expr->Clone()), order_op_(order_op), limit_num_(limit_num)
+      : table_(table),
+        index_(dynamic_cast<IvfflatIndex *>(index)),
+        expr_(expr->Clone()),
+        order_op_(order_op),
+        limit_num_(limit_num)
   {
     // 如果没有 field meta 也可以
     if (field_meta == nullptr) {
@@ -59,7 +64,7 @@ private:
   Trx               *trx_            = nullptr;
   Table             *table_          = nullptr;
   ReadWriteMode      mode_           = ReadWriteMode::READ_ONLY;
-  Index             *index_          = nullptr;
+  IvfflatIndex      *index_          = nullptr;
   IndexScanner      *index_scanner_  = nullptr;
   RecordFileHandler *record_handler_ = nullptr;
 

@@ -33,6 +33,7 @@ public:
 
   const char  *var_name() const { return set_variable_.name.c_str(); }
   const Value &var_value() const { return set_variable_.value; }
+  const char *str_val() const { return set_variable_.str_val.c_str(); }
 
   static RC create(const SetVariableSqlNode &set_variable, Stmt *&stmt)
   {

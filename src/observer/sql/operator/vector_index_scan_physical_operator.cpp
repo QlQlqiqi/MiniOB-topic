@@ -118,19 +118,34 @@ RC VectorIndexScanPhysicalOperator::init()
 
 RC VectorIndexScanPhysicalOperator::read_all()
 {
-  RC  rc;
-  RID rid;
+  auto order_by_expr = static_cast<FunctionExpr *>(expr_.get());
+  // order by 的左右 expr 一个是 field，一个是 vector
+  auto &left  = order_by_expr->left();
+  auto &right = order_by_expr->right();
 
-  while (RC::SUCCESS == (rc = index_scanner_->next_entry(&rid))) {
+  Value tmp;
+  if (left->type() == ExprType::VALUE) {
+    left->get_value(tuple_, tmp);
+  } else {
+    right->get_value(tuple_, tmp);
+  }
+
+  Value value;
+  tmp.cast_to(tmp, AttrType::VECTORS, value);
+  std::vector<double> target;
+  target.resize(value.length() - field_meta_->nullable());
+  memcpy(target.data(), value.data() + field_meta_->nullable(), value.length() - field_meta_->nullable());
+
+  std::vector<RID> res;
+  index_->ann_search(target, limit_num_, res);
+  for (auto &rid : res) {
     Record tmp_record;
-    rc = record_handler_->get_record(rid, tmp_record);
+    RC     rc = record_handler_->get_record(rid, tmp_record);
     if (OB_FAIL(rc)) {
       LOG_TRACE("failed to get record. rid=%s, rc=%s", rid.to_string().c_str(), strrc(rc));
       return rc;
     }
-
     LOG_TRACE("got a record. rid=%s", rid.to_string().c_str());
-
     tuple_.set_record(&tmp_record);
 
     rc = trx_->visit_record(table_, tmp_record, mode_);
@@ -141,8 +156,5 @@ RC VectorIndexScanPhysicalOperator::read_all()
     tuples_.emplace_back(tuple_.clone());
   }
 
-  if (rc != RC::RECORD_EOF) {
-    return rc;
-  }
   return RC::SUCCESS;
 }

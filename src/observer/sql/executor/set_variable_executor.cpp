@@ -19,6 +19,7 @@ RC SetVariableExecutor::execute(SQLStageEvent *sql_event)
 
     const char  *var_name  = stmt->var_name();
     const Value &var_value = stmt->var_value();
+    const auto str_val = stmt->str_val();
     if (strcasecmp(var_name, "sql_debug") == 0) {
       bool bool_value = false;
       rc              = var_value_to_boolean(var_value, bool_value);
@@ -34,6 +35,10 @@ RC SetVariableExecutor::execute(SQLStageEvent *sql_event)
       } else {
         rc = RC::INVALID_ARGUMENT;
       }
+    } else if (strcasecmp(var_name, "names") == 0 && strcasecmp(str_val, "utf8mb4") == 0) {
+      // set names utf8mb4
+      // 直接忽略
+      return RC::SUCCESS;
     } else {
       rc = RC::VARIABLE_NOT_EXISTS;
     }

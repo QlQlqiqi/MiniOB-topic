@@ -886,7 +886,7 @@ RC FunctionExpr::get_value(const Tuple &tuple, Value &value) const
   return rc;
 }
 
-RC FunctionExpr::calc_l2_distance(const Value &left, const Value &right, Value &result) const
+RC FunctionExpr::calc_l2_distance(const Value &left, const Value &right, Value &result) 
 {
   auto   l   = reinterpret_cast<const double *>(left.data());
   auto   r   = reinterpret_cast<const double *>(right.data());
@@ -900,7 +900,7 @@ RC FunctionExpr::calc_l2_distance(const Value &left, const Value &right, Value &
   return RC::SUCCESS;
 }
 
-RC FunctionExpr::calc_cosine_distance(const Value &left, const Value &right, Value &result) const
+RC FunctionExpr::calc_cosine_distance(const Value &left, const Value &right, Value &result) 
 {
   auto   l    = reinterpret_cast<const double *>(left.data());
   auto   r    = reinterpret_cast<const double *>(right.data());
@@ -922,7 +922,7 @@ RC FunctionExpr::calc_cosine_distance(const Value &left, const Value &right, Val
   return RC::SUCCESS;
 }
 
-RC FunctionExpr::calc_inner_product(const Value &left, const Value &right, Value &result) const
+RC FunctionExpr::calc_inner_product(const Value &left, const Value &right, Value &result) 
 {
   auto   l   = reinterpret_cast<const double *>(left.data());
   auto   r   = reinterpret_cast<const double *>(right.data());

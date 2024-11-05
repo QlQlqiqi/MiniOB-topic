@@ -32,12 +32,12 @@ public:
   RC open(Table *table, const char *file_name, const IndexMeta &index_meta,
       const std::vector<const FieldMeta *> &field_metas) override;
 
-  vector<RID> ann_search(const vector<float> &base_vector, size_t limit);
+  void ann_search(const std::vector<double> &target, size_t limit, std::vector<RID> &res);
 
   RC close();
 
-  RC insert_entry(const char *record, const RID *rid) override { return index_handler_.insert_entry(record, rid); };
-  RC delete_entry(const char *record, const RID *rid) override { return index_handler_.delete_entry(record, rid); };
+  RC insert_entry(const char *record, const RID *rid) override;
+  RC delete_entry(const char *record, const RID *rid) override;
 
   RC sync() override { return index_handler_.sync(); };
 
@@ -47,10 +47,28 @@ public:
   int func_type() const { return func_type_; }
 
 private:
+// 在 data_ptr_ 中精确寻找 v
+  // RC find(const std::vector<double> &v, int &found_idx) const;
+
   BplusTreeHandler index_handler_;
   Table           *table_     = nullptr;
   bool             inited_    = false;
   int              lists_     = 0;
   int              probes_    = 0;
   int              func_type_ = 0;
+
+  // first 中是完整的 record，second 是 vector 内容
+  using RecordPtr = std::shared_ptr<std::pair<Record, std::vector<double>>>;
+
+  // 这里存储的数据是整个 record 全部
+
+  // 会将数据在内存中保存一份，存储在 data_ 中
+  // 这里的数据不存储 isnull 标识符
+  std::unique_ptr<std::vector<RecordPtr>> data_ptr_;
+  // 第一个 vector 是簇的数量，长度是 lists_
+  std::unique_ptr<std::vector<std::vector<RecordPtr>>> kmeans_ptr_;
+  // kmeans 的每个簇的在 kmeans_ptr_ 中的下标和质点坐标
+  std::unique_ptr<std::vector<std::pair<int, std::vector<double>>>> points_ptr_;
+  // 是否需要重新执行 kmeans 算法
+  bool is_clean_ = true;
 };
