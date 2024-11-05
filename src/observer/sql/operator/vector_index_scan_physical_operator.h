@@ -25,9 +25,9 @@ See the Mulan PSL v2 for more details. */
 class VectorIndexScanPhysicalOperator : public PhysicalOperator
 {
 public:
-  VectorIndexScanPhysicalOperator(
-      Table *table, Index *index, const FieldMeta *field_meta, const OrderOp order_op, const int limit_num)
-      :table_(table), index_(index), order_op_(order_op), limit_num_(limit_num)
+  VectorIndexScanPhysicalOperator(Table *table, Index *index, const FieldMeta *field_meta, const Expression *expr,
+      const OrderOp order_op, const int limit_num)
+      : table_(table), index_(index), expr_(expr->Clone()), order_op_(order_op), limit_num_(limit_num)
   {
     // 如果没有 field meta 也可以
     if (field_meta == nullptr) {
@@ -50,6 +50,12 @@ public:
   Tuple *current_tuple() override;
 
 private:
+  RC init();
+  RC read_all();
+
+  // 这块模仿 order by，先把所有的数据读到 tuples 中，然后排序
+  std::vector<std::unique_ptr<Tuple>> tuples_;
+
   Trx               *trx_            = nullptr;
   Table             *table_          = nullptr;
   ReadWriteMode      mode_           = ReadWriteMode::READ_ONLY;
@@ -57,10 +63,11 @@ private:
   IndexScanner      *index_scanner_  = nullptr;
   RecordFileHandler *record_handler_ = nullptr;
 
-  Record   current_record_;
   RowTuple tuple_;
+  int idx_ = -1;
 
-  std::shared_ptr<FieldMeta> field_meta_;
-  OrderOp                    order_op_;
-  int                        limit_num_;
+  std::shared_ptr<FieldMeta>  field_meta_;
+  std::unique_ptr<Expression> expr_ = nullptr;
+  OrderOp                     order_op_;
+  int                         limit_num_;
 };

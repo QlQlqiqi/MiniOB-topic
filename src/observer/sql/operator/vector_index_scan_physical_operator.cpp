@@ -48,30 +48,18 @@ RC VectorIndexScanPhysicalOperator::next()
     return RC::RECORD_EOF;
   }
 
-  RID rid;
-  RC  rc = RC::SUCCESS;
-
-  while (RC::SUCCESS == (rc = index_scanner_->next_entry(&rid))) {
-    rc = record_handler_->get_record(rid, current_record_);
-    if (OB_FAIL(rc)) {
-      LOG_TRACE("failed to get record. rid=%s, rc=%s", rid.to_string().c_str(), strrc(rc));
+  RC rc;
+  if (idx_ == -1) {
+    if ((rc = init()) != RC::SUCCESS) {
       return rc;
     }
-
-    LOG_TRACE("got a record. rid=%s", rid.to_string().c_str());
-
-    tuple_.set_record(&current_record_);
-
-    rc = trx_->visit_record(table_, current_record_, mode_);
-    if (rc == RC::RECORD_INVISIBLE) {
-      LOG_TRACE("record invisible");
-      continue;
-    }
-    limit_num_--;
-    return rc;
   }
-
-  return rc;
+  idx_++;
+  if (idx_ == static_cast<int64_t>(tuples_.size())) {
+    return RC::RECORD_EOF;
+  }
+  limit_num_--;
+  return RC::SUCCESS;
 }
 
 RC VectorIndexScanPhysicalOperator::close()
@@ -83,11 +71,78 @@ RC VectorIndexScanPhysicalOperator::close()
 
 Tuple *VectorIndexScanPhysicalOperator::current_tuple()
 {
-  tuple_.set_record(&current_record_);
-  return &tuple_;
+  if (idx_ < 0) {
+    return nullptr;
+  }
+  return tuples_[idx_].get();
 }
 
 std::string VectorIndexScanPhysicalOperator::param() const
 {
   return std::string(index_->index_meta().name()) + " ON " + table_->name();
+}
+
+RC VectorIndexScanPhysicalOperator::init()
+{
+  RC rc = read_all();
+  if (rc != RC::SUCCESS) {
+    return rc;
+  }
+
+  std::sort(tuples_.begin(), tuples_.end(), [&](const std::unique_ptr<Tuple> &a, const std::unique_ptr<Tuple> &b) {
+    Value a_val, b_val;
+    assert(expr_->type() == ExprType::FUNCTION);
+    Expression *expression = expr_.get();
+    expression->get_value(*a, a_val);
+    expression->get_value(*b, b_val);
+    auto cmp = a_val.compare_without_cast(b_val);
+    if (cmp == ValCmpRes::EQUAL)
+      return false;
+    if (cmp == ValCmpRes::LESS) {
+      return order_op_ == OrderOp::ASC;
+    }
+    if (cmp == ValCmpRes::GREAT) {
+      return order_op_ == OrderOp::DESC;
+    }
+    if (cmp == ValCmpRes::NULL_VAL) {
+      // if a_val.is_null() and b_val.is_null() should continue
+      if (a_val.is_null() && b_val.is_null()) {
+        return false;
+      }
+      return order_op_ == OrderOp::ASC ? a_val.is_null() : b_val.is_null();
+    }
+    return false;
+  });
+  return RC::SUCCESS;
+}
+
+RC VectorIndexScanPhysicalOperator::read_all()
+{
+  RC  rc;
+  RID rid;
+
+  while (RC::SUCCESS == (rc = index_scanner_->next_entry(&rid))) {
+    Record tmp_record;
+    rc = record_handler_->get_record(rid, tmp_record);
+    if (OB_FAIL(rc)) {
+      LOG_TRACE("failed to get record. rid=%s, rc=%s", rid.to_string().c_str(), strrc(rc));
+      return rc;
+    }
+
+    LOG_TRACE("got a record. rid=%s", rid.to_string().c_str());
+
+    tuple_.set_record(&tmp_record);
+
+    rc = trx_->visit_record(table_, tmp_record, mode_);
+    if (rc == RC::RECORD_INVISIBLE) {
+      LOG_TRACE("record invisible");
+      continue;
+    }
+    tuples_.emplace_back(tuple_.clone());
+  }
+
+  if (rc != RC::RECORD_EOF) {
+    return rc;
+  }
+  return RC::SUCCESS;
 }
