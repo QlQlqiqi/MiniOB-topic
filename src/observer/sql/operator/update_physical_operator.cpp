@@ -61,6 +61,8 @@ RC UpdatePhysicalOperator::open(Trx *trx)
   }
 
   trx_ = trx;
+
+  return RC::SUCCESS;
 }
 
 RC UpdatePhysicalOperator::next()
@@ -279,10 +281,5 @@ RC UpdatePhysicalOperator::next()
 
 RC UpdatePhysicalOperator::close()
 {
-  if (!children_.empty())
-  {
-    return children_[0]->close();
-  }
-
   return RC::SUCCESS;
 }
