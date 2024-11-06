@@ -33,6 +33,9 @@ using namespace common;
 
 #define NET "NET"
 
+#ifdef __clang__
+#pragma clang diagnostic ignored "-Wmissing-braces"
+#endif
 static Server *g_server = nullptr;
 
 void usage()

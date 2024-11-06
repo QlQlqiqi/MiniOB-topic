@@ -5,7 +5,7 @@
 #include "storage/db/db.h"
 #include "storage/index/bplus_tree.h"
 #include "storage/index/ivfflat_index.h"
-#include "storage/index/dkm.hpp"
+#include "storage/index/dkm_parallel.hpp"
 #include <functional>
 #include <queue>
 
@@ -84,7 +84,7 @@ void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, s
       data.emplace_back(record_ptr->second);
     }
     auto num = std::min(lists_, (int)data.size());
-    auto cluster_data = dkm::kmeans_lloyd<double>(data, num);
+    auto cluster_data = dkm::kmeans_lloyd_parallel<double>(data, num);
     int  idx          = 0;
     kmeans_ptr_->resize(num);
     for (const auto &label : std::get<1>(cluster_data)) {
