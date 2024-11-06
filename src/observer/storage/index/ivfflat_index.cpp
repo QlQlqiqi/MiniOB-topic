@@ -132,6 +132,7 @@ void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, s
       return cmp_res;
     }
     ASSERT(false, "unreachable");
+    return ValCmpRes::CANNOT;
   };
   // 1. 找 probes 个距离最短的质点
   std::sort(points_ptr_->begin(), points_ptr_->end(), [&](const auto &a, const auto &b) {

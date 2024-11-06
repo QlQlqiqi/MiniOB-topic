@@ -13,6 +13,8 @@
 #include <tuple>
 #include <type_traits>
 #include <vector>
+#include <immintrin.h>
+
 /*
 DKM - A k-means implementation that is generic across variable data dimensions.
 */
@@ -38,6 +40,73 @@ T distance_squared(const std::vector<T>& point_a, const std::vector<T>& point_b)
 	return d_squared;
 }
 
+// Helper function to perform horizontal sum for 8 floats
+static inline float hadd_avx(__m256 vec) {
+    __m256 hadd = _mm256_hadd_ps(vec, vec);  // Horizontal add
+    __m128 low = _mm256_castps256_ps128(hadd);  // Lower 128 bits
+    __m128 high = _mm256_extractf128_ps(hadd, 1);  // Upper 128 bits
+    __m128 sum = _mm_add_ps(low, high);  // Add the two parts
+    return sum[0] + sum[1];  // Return the final sum
+}
+
+// Helper function to perform horizontal sum for 4 doubles
+static inline double hadd_avx(__m256d vec) {
+    __m256d hadd = _mm256_hadd_pd(vec, vec);  // Horizontal add
+    __m128d low = _mm256_castpd256_pd128(hadd);  // Lower 128 bits
+    __m128d high = _mm256_extractf128_pd(hadd, 1);  // Upper 128 bits
+    __m128d sum = _mm_add_pd(low, high);  // Add the two parts
+    return sum[0] + sum[1];  // Return the final sum
+}
+
+// SIMD for float type (AVX2)
+template <>
+float distance_squared(const std::vector<float>& point_a, const std::vector<float>& point_b) {
+    float d_squared = 0.0f;
+    size_t size = point_a.size();
+    
+    size_t i = 0;
+    for (; i + 7 < size; i += 8) {
+        __m256 a_vals = _mm256_loadu_ps(&point_a[i]);  // 加载 8 个 float 元素
+        __m256 b_vals = _mm256_loadu_ps(&point_b[i]);
+        __m256 diff = _mm256_sub_ps(a_vals, b_vals);   // 计算差
+        __m256 diff_squared = _mm256_mul_ps(diff, diff); // 差的平方
+        d_squared += hadd_avx(diff_squared); // 求和
+    }
+
+    // 处理剩余的元素（如果有的话）
+    for (; i < size; ++i) {
+        float delta = point_a[i] - point_b[i];
+        d_squared += delta * delta;
+    }
+    
+    return d_squared;
+}
+
+// SIMD for double type (AVX2)
+template <>
+double distance_squared(const std::vector<double>& point_a, const std::vector<double>& point_b) {
+    double d_squared = 0.0;
+    size_t size = point_a.size();
+    
+    size_t i = 0;
+    for (; i + 3 < size; i += 4) {
+        __m256d a_vals = _mm256_loadu_pd(&point_a[i]);  // 加载 4 个 double 元素
+        __m256d b_vals = _mm256_loadu_pd(&point_b[i]);
+        __m256d diff = _mm256_sub_pd(a_vals, b_vals);   // 计算差
+        __m256d diff_squared = _mm256_mul_pd(diff, diff); // 差的平方
+        d_squared += hadd_avx(diff_squared); // 求和
+    }
+
+    // 处理剩余的元素（如果有的话）
+    for (; i < size; ++i) {
+        double delta = point_a[i] - point_b[i];
+        d_squared += delta * delta;
+    }
+    
+    return d_squared;
+}
+
+
 template <typename T>
 T distance(const std::vector<T>& point_a, const std::vector<T>& point_b) {
 	return std::sqrt(distance_squared(point_a, point_b));
@@ -49,16 +118,16 @@ Calculate the smallest distance between each of the data points and any of the i
 template <typename T>
 std::vector<T> closest_distance(
     const std::vector<std::vector<T>>& means, const std::vector<std::vector<T>>& data) {
-	std::vector<T> distances;
-	distances.reserve(data.size());
-	for (auto& d : data) {
-		T closest = distance_squared(d, means[0]);
-		for (auto& m : means) {
-			T distance = distance_squared(d, m);
+	std::vector<T> distances(data.size());
+	#pragma omp parallel for
+	for (size_t i = 0; i < data.size(); ++i) {
+		T closest = distance_squared(data[i], means[0]);
+		for (const auto& m : means) {
+			T distance = distance_squared(data[i], m);
 			if (distance < closest)
 				closest = distance;
 		}
-		distances.push_back(closest);
+		distances[i] = closest;
 	}
 	return distances;
 }
@@ -127,9 +196,10 @@ Calculate the index of the mean each data point is closest to (euclidean distanc
 template <typename T>
 std::vector<uint32_t> calculate_clusters(
     const std::vector<std::vector<T>>& data, const std::vector<std::vector<T>>& means) {
-	std::vector<uint32_t> clusters;
-	for (auto& point : data) {
-		clusters.push_back(closest_mean(point, means));
+	std::vector<uint32_t> clusters(data.size(), 0);
+	#pragma omp parallel for
+	for (size_t i = 0; i < data.size(); ++i) {
+		clusters[i] = closest_mean(data[i], means);
 	}
 	return clusters;
 }

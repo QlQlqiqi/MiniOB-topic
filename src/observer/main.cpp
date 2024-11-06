@@ -194,8 +194,8 @@ int main(int argc, char **argv)
     return rc;
   }
 
-  g_log->set_console_level(common::LOG_LEVEL_INFO);
-  g_log->set_log_level(common::LOG_LEVEL_INFO);
+  //g_log->set_console_level(common::LOG_LEVEL_INFO);
+  //g_log->set_log_level(common::LOG_LEVEL_INFO);
   g_server = init_server();
   g_server->serve();
 
