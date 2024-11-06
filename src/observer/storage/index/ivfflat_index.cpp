@@ -78,23 +78,7 @@ RC IvfflatIndex::open(
 void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, std::vector<RID> &res)
 {
   if (!is_clean_) {
-    std::vector<std::vector<double>> data;
-    data.reserve(data_ptr_->size());
-    for (auto &record_ptr : *data_ptr_) {
-      data.emplace_back(record_ptr->second);
-    }
-    auto num = std::min(lists_, (int)data.size());
-    auto cluster_data = dkm::kmeans_lloyd_parallel<double>(data, num);
-    int  idx          = 0;
-    kmeans_ptr_->resize(num);
-    for (const auto &label : std::get<1>(cluster_data)) {
-      (*kmeans_ptr_)[label].emplace_back(data_ptr_->at(idx++));
-    }
-    idx = 0;
-    points_ptr_->reserve(std::get<0>(cluster_data).size());
-    for (const auto &point : std::get<0>(cluster_data)) {
-      points_ptr_->emplace_back(std::make_pair(idx++, point));
-    }
+    cleaner();
     is_clean_ = true;
   }
 
@@ -135,27 +119,124 @@ void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, s
     }
     ASSERT(false, "unreachable");
   };
-  // 1. 找 probes 个距离最短的质点
-  std::sort(points_ptr_->begin(), points_ptr_->end(), [&](const auto &a, const auto &b) {
-    return low_distance(a.second, b.second, tar_val) == ValCmpRes::LESS;
-  });
 
-  // 2. 在这些簇里选 limit 个距离最短的点
   auto cmp = [&](const RecordPtr &a, const RecordPtr &b) {
     return low_distance(a->second, b->second, tar_val) != ValCmpRes::LESS;
   };
   std::priority_queue<RecordPtr, std::vector<RecordPtr>, function<bool(const RecordPtr &, const RecordPtr &)>> pq(cmp);
-  for (int i = 0; i < std::min(probes_, (int)kmeans_ptr_->size()); i++) {
-    for (auto &record_ptr : kmeans_ptr_->at(i)) {
-      pq.emplace(record_ptr);
+
+  // TODO(qiqi): 这里暂时写的抽象
+  if (!is_second_) {
+    // 1. 找 probes 个距离最短的质点
+    std::sort(points_ptr_->begin(), points_ptr_->end(), [&](const auto &a, const auto &b) {
+      return low_distance(a.second, b.second, tar_val) == ValCmpRes::LESS;
+    });
+
+    // 2. 在这些簇里选 limit 个距离最短的点
+    for (int i = 0; i < std::min(probes_, (int)kmeans_ptr_->size()); i++) {
+      for (auto &record_ptr : kmeans_ptr_->at(i)) {
+        pq.emplace(record_ptr);
+      }
+    }
+
+    // 3. 将结果返回
+    while (limit-- && !pq.empty()) {
+      auto &top = pq.top();
+      res.emplace_back(top->first.rid());
+      pq.pop();
+    }
+  } else {
+    for (int i = 0; i < first_points_size_; i++) {
+      // 1. 找 probes 个距离最短的质点
+      std::sort(child_points_ptr_[i]->begin(), child_points_ptr_[i]->end(), [&](const auto &a, const auto &b) {
+        return low_distance(a.second, b.second, tar_val) == ValCmpRes::LESS;
+      });
+
+      // 2. 在这些簇里选 limit 个距离最短的点
+      for (int i = 0; i < std::min(probes_, (int)child_kmeans_ptr_[i]->size()); i++) {
+        for (auto &record_ptr : child_kmeans_ptr_[i]->at(i)) {
+          pq.emplace(record_ptr);
+        }
+      }
+    }
+    // 3. 将结果返回
+    while (limit-- && !pq.empty()) {
+      auto &top = pq.top();
+      res.emplace_back(top->first.rid());
+      pq.pop();
     }
   }
+}
 
-  // 3. 将结果返回
-  while (limit-- && !pq.empty()) {
-    auto &top = pq.top();
-    res.emplace_back(top->first.rid());
-    pq.pop();
+void IvfflatIndex::cleaner()
+{
+  // is_second_ = data_ptr_->size() > 10000;
+  is_second_ = true;
+  std::vector<std::vector<double>> data;
+  data.reserve(data_ptr_->size());
+  for (auto &record_ptr : *data_ptr_) {
+    data.emplace_back(record_ptr->second);
+  }
+  // TODO(qiqi): 这里暂时写的抽象
+  if (!is_second_) {
+    auto num          = std::min(lists_, (int)data.size());
+    auto cluster_data = dkm::kmeans_lloyd_parallel<double>(data, num);
+    int  idx          = 0;
+    kmeans_ptr_->resize(num);
+    for (const auto &label : std::get<1>(cluster_data)) {
+      (*kmeans_ptr_)[label].emplace_back(data_ptr_->at(idx++));
+    }
+    data_ptr_->clear();
+    idx = 0;
+    points_ptr_->reserve(std::get<0>(cluster_data).size());
+    for (const auto &point : std::get<0>(cluster_data)) {
+      points_ptr_->emplace_back(std::make_pair(idx++, point));
+    }
+    data.clear();
+  } else {
+    // 二次聚类
+    first_points_size_  = (int)std::floor(std::sqrt(lists_));
+
+    // 1. 先做 first_points_size_ 个质点数的聚类
+    first_points_size_          = std::min(first_points_size_, (int)data.size());
+    auto cluster_data = dkm::kmeans_lloyd_parallel<double>(data, first_points_size_);
+    int idx = 0;
+    kmeans_ptr_->resize(first_points_size_);
+    for (const auto &label : std::get<1>(cluster_data)) {
+      (*kmeans_ptr_)[label].emplace_back(data_ptr_->at(idx++));
+    }
+    data.clear();
+    data_ptr_->clear();
+
+    // 2. 对每个聚类所属的数据进行二次聚类
+    second_points_size_ = (int)std::ceil(lists_ / first_points_size_);
+    child_kmeans_ptr_.reserve(first_points_size_);
+    child_points_ptr_.reserve(first_points_size_);
+    for (int i = 0; i < first_points_size_; i++) {
+      child_kmeans_ptr_.emplace_back(std::make_unique<std::vector<std::vector<RecordPtr>>>());
+      child_points_ptr_.emplace_back(std::make_unique<std::vector<std::pair<int, std::vector<double>>>>());
+      auto &data_ptr = kmeans_ptr_->at(i);
+      data.reserve(data_ptr.size());
+      for (auto &record_ptr : data_ptr) {
+        data.emplace_back(record_ptr->second);
+      }
+
+      second_points_size_ = std::min(second_points_size_, (int)data.size());
+      auto cluster_data  = dkm::kmeans_lloyd_parallel<double>(data, second_points_size_);
+      int  idx           = 0;
+      child_kmeans_ptr_[i]->resize(second_points_size_);
+      for (const auto &label : std::get<1>(cluster_data)) {
+        (*child_kmeans_ptr_[i])[label].emplace_back(data_ptr.at(idx++));
+      }
+
+      data_ptr.clear();
+      idx = 0;
+      child_points_ptr_[i]->reserve(std::get<0>(cluster_data).size());
+      for (const auto &point : std::get<0>(cluster_data)) {
+        child_points_ptr_[i]->emplace_back(std::make_pair(idx++, point));
+      }
+      data.clear();
+    }
   }
 }
 
