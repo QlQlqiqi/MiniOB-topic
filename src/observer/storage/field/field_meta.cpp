@@ -181,6 +181,6 @@ RC FieldMeta::from_json(const Json::Value &json_value, FieldMeta &field)
   int         field_id  = field_id_value.asInt();
   bool        nullable = nullable_value.asBool();
   bool        high_vec = high_vector.asBool();
-  int        dim = high_vector.asInt();
+  int        dim = dim_value.asInt();
   return field.init(name, type, offset, len, visible, field_id, nullable, high_vec, dim);
 }
