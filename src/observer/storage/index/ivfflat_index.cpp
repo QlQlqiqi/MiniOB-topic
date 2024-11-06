@@ -83,9 +83,10 @@ void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, s
     for (auto &record_ptr : *data_ptr_) {
       data.emplace_back(record_ptr->second);
     }
-    auto cluster_data = dkm::kmeans_lloyd<double>(data, lists_);
+    auto num = std::min(lists_, (int)data.size());
+    auto cluster_data = dkm::kmeans_lloyd<double>(data, num);
     int  idx          = 0;
-    kmeans_ptr_->resize(lists_);
+    kmeans_ptr_->resize(num);
     for (const auto &label : std::get<1>(cluster_data)) {
       (*kmeans_ptr_)[label].emplace_back(data_ptr_->at(idx++));
     }
@@ -108,7 +109,7 @@ void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, s
     tmp1.set_type(AttrType::VECTORS);
     tmp2.set_type(AttrType::VECTORS);
     tmp1.set_data(reinterpret_cast<const char *>(a.data()), a.size() * sizeof(double));
-    tmp2.set_data(reinterpret_cast<const char *>(a.data()), b.size() * sizeof(double));
+    tmp2.set_data(reinterpret_cast<const char *>(b.data()), b.size() * sizeof(double));
     Value value1;
     value1.set_type(AttrType::VECTORS);
     Value value2;
@@ -128,6 +129,7 @@ void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, s
         break;
     }
     auto cmp_res = value1.compare(value2);
+    // LOG_INFO("low_distance cmp_res: %d", cmp_res);
     if (cmp_res == ValCmpRes::LESS || cmp_res == ValCmpRes::EQUAL || cmp_res == ValCmpRes::GREAT) {
       return cmp_res;
     }
@@ -144,7 +146,7 @@ void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, s
     return low_distance(a->second, b->second, tar_val) != ValCmpRes::LESS;
   };
   std::priority_queue<RecordPtr, std::vector<RecordPtr>, function<bool(const RecordPtr &, const RecordPtr &)>> pq(cmp);
-  for (int i = 0; i < std::min(probes_, lists_); i++) {
+  for (int i = 0; i < std::min(probes_, (int)kmeans_ptr_->size()); i++) {
     for (auto &record_ptr : kmeans_ptr_->at(i)) {
       pq.emplace(record_ptr);
     }
