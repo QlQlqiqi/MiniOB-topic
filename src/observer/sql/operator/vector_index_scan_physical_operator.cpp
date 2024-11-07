@@ -89,30 +89,30 @@ RC VectorIndexScanPhysicalOperator::init()
     return rc;
   }
 
-  std::sort(tuples_.begin(), tuples_.end(), [&](const std::unique_ptr<Tuple> &a, const std::unique_ptr<Tuple> &b) {
-    Value a_val, b_val;
-    assert(expr_->type() == ExprType::FUNCTION);
-    Expression *expression = expr_.get();
-    expression->get_value(*a, a_val);
-    expression->get_value(*b, b_val);
-    auto cmp = a_val.compare_without_cast(b_val);
-    if (cmp == ValCmpRes::EQUAL)
-      return false;
-    if (cmp == ValCmpRes::LESS) {
-      return order_op_ == OrderOp::ASC;
-    }
-    if (cmp == ValCmpRes::GREAT) {
-      return order_op_ == OrderOp::DESC;
-    }
-    if (cmp == ValCmpRes::NULL_VAL) {
-      // if a_val.is_null() and b_val.is_null() should continue
-      if (a_val.is_null() && b_val.is_null()) {
-        return false;
-      }
-      return order_op_ == OrderOp::ASC ? a_val.is_null() : b_val.is_null();
-    }
-    return false;
-  });
+  // std::sort(tuples_.begin(), tuples_.end(), [&](const std::unique_ptr<Tuple> &a, const std::unique_ptr<Tuple> &b) {
+  //   Value a_val, b_val;
+  //   assert(expr_->type() == ExprType::FUNCTION);
+  //   Expression *expression = expr_.get();
+  //   expression->get_value(*a, a_val);
+  //   expression->get_value(*b, b_val);
+  //   auto cmp = a_val.compare_without_cast(b_val);
+  //   if (cmp == ValCmpRes::EQUAL)
+  //     return false;
+  //   if (cmp == ValCmpRes::LESS) {
+  //     return order_op_ == OrderOp::ASC;
+  //   }
+  //   if (cmp == ValCmpRes::GREAT) {
+  //     return order_op_ == OrderOp::DESC;
+  //   }
+  //   if (cmp == ValCmpRes::NULL_VAL) {
+  //     // if a_val.is_null() and b_val.is_null() should continue
+  //     if (a_val.is_null() && b_val.is_null()) {
+  //       return false;
+  //     }
+  //     return order_op_ == OrderOp::ASC ? a_val.is_null() : b_val.is_null();
+  //   }
+  //   return false;
+  // });
   return RC::SUCCESS;
 }
 
