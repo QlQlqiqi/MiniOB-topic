@@ -180,8 +180,7 @@ void IvfflatIndex::cleaner()
   child_kmeans_ptr_.clear();
   child_points_ptr_.clear();
 
-  // is_second_ = data_ptr_->size() > 10000;
-  is_second_ = true;
+  is_second_ = data_ptr_->size() > 10000;
   std::vector<std::vector<double>> data;
   data.reserve(data_ptr_->size());
   for (auto &record_ptr : *data_ptr_) {
