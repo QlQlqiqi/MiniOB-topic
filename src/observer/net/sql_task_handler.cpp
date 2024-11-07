@@ -17,9 +17,12 @@ See the Mulan PSL v2 for more details. */
 #include "event/session_event.h"
 #include "event/sql_event.h"
 #include "session/session.h"
+#include <chrono>
 
 RC SqlTaskHandler::handle_event(Communicator *communicator)
 {
+  auto  starttime = std::chrono::system_clock::now();
+
   SessionEvent *event = nullptr;
   RC rc = communicator->read_event(event);
   if (OB_FAIL(rc)) {
@@ -49,6 +52,8 @@ RC SqlTaskHandler::handle_event(Communicator *communicator)
 
   delete event;
 
+  auto diff = std::chrono::system_clock::now() - starttime;
+  printf("total cost: %ldms\n", diff.count() / 1000000);
   if (need_disconnect) {
     return RC::INTERNAL;
   }

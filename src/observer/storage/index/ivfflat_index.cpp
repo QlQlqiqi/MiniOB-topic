@@ -78,7 +78,11 @@ RC IvfflatIndex::open(
 void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, std::vector<RID> &res)
 {
   if (!is_clean_) {
+    auto starttime = std::chrono::system_clock::now();
     cleaner();
+    auto diff = std::chrono::system_clock::now()- starttime;
+    printf("=============================================\n");
+    printf("cleaner cost: %ldms\n", diff.count() / 1000000);
     is_clean_ = true;
   }
 
@@ -148,11 +152,17 @@ void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, s
       pq.pop();
     }
   } else {
+    auto starttime = std::chrono::system_clock::now();
     for (int i = 0; i < first_points_size_; i++) {
       std::sort(child_points_ptr_[i]->begin(), child_points_ptr_[i]->end(), [&](const auto &a, const auto &b) {
         return low_distance(a.second, b.second, tar_val) == ValCmpRes::LESS;
       });
+    }
+    auto diff      = std::chrono::system_clock::now() - starttime;
+    printf("sort cost: %ldms\n", diff.count() / 1000000);
 
+    starttime = std::chrono::system_clock::now();
+    for (int i = 0; i < first_points_size_; i++) {
       // 1. 找 probes 个距离最短的质点
       auto &kmeans_ptr = child_kmeans_ptr_[i];
       auto &points_ptr = child_points_ptr_[i];
@@ -164,6 +174,8 @@ void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, s
         }
       }
     }
+    diff      = std::chrono::system_clock::now() - starttime;
+    printf("priority cost: %ldms\n", diff.count() / 1000000);
 
     // 2. 在这些簇里选 limit 个距离最短的点
     // 3. 将结果返回
