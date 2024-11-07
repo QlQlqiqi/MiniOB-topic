@@ -153,12 +153,16 @@ void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, s
       });
 
       // 2. 在这些簇里选 limit 个距离最短的点
-      for (int i = 0; i < std::min(probes_, (int)child_kmeans_ptr_[i]->size()); i++) {
-        for (auto &record_ptr : child_kmeans_ptr_[i]->at(i)) {
-          pq.emplace(record_ptr);
+      for (int k = 0; k < kmeans_ptr_->size(); k++) {
+        auto &kmeans_ptr = child_kmeans_ptr_[k];
+        for (int i = 0; i < std::min(probes_, (int)kmeans_ptr->size()); i++) {
+          for (auto &record_ptr : kmeans_ptr->at(i)) {
+            pq.emplace(record_ptr);
+          }
         }
       }
     }
+
     // 3. 将结果返回
     while (limit-- && !pq.empty()) {
       auto &top = pq.top();
@@ -170,6 +174,12 @@ void IvfflatIndex::ann_search(const std::vector<double> &target, size_t limit, s
 
 void IvfflatIndex::cleaner()
 {
+  // 这里性能会减弱
+  kmeans_ptr_->clear();
+  points_ptr_->clear();
+  child_kmeans_ptr_.clear();
+  child_points_ptr_.clear();
+
   // is_second_ = data_ptr_->size() > 10000;
   is_second_ = true;
   std::vector<std::vector<double>> data;
