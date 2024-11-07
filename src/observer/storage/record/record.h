@@ -46,6 +46,10 @@ struct RID
     return ss.str();
   }
 
+  bool operator<(const RID &other) const {
+    return page_num == other.page_num ? slot_num < other.slot_num : page_num < other.slot_num;
+  }
+
   bool operator==(const RID &other) const { return page_num == other.page_num && slot_num == other.slot_num; }
 
   bool operator!=(const RID &other) const { return !(*this == other); }
