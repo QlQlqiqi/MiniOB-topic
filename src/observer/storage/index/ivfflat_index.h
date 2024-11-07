@@ -64,9 +64,11 @@ private:
   // dkm 算法使用数据的结构
   using DkmData = std::vector<Vector>;
 
+  using PQData = std::pair<RID, std::shared_ptr<Vector>>;
+
   void read_all_rid(DataPtr &rids);
   void read_all_vector(const std::vector<RID> &rids, DkmData &dkm_data);
-  void read_all_vector(const std::vector<RID> &rids, std::vector<std::shared_ptr<std::pair<RID, Vector>>> &data);
+  void read_all_vector(const std::vector<RID> &rids, std::vector<PQData> &data);
 
   BplusTreeHandler index_handler_;
   Table           *table_     = nullptr;

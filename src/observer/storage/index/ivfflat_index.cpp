@@ -99,14 +99,12 @@ void IvfflatIndex::ann_search(const Vector &target, size_t limit, std::vector<RI
     return res;
   };
 
-  auto cmp = [&](const std::shared_ptr<std::pair<RID, Vector>> &a, const std::shared_ptr<std::pair<RID, Vector>> &b) {
-    return distance(a->second.data(), target.data(), target.size()) >
-           distance(b->second.data(), target.data(), target.size());
+  // 小根堆
+  auto cmp = [&](const PQData &a, const PQData &b) {
+    return distance(a.second->data(), target.data(), target.size()) <
+           distance(b.second->data(), target.data(), target.size());
   };
-  std::priority_queue<std::shared_ptr<std::pair<RID, Vector>>,
-      std::vector<std::shared_ptr<std::pair<RID, Vector>>>,
-      function<bool(const std::shared_ptr<std::pair<RID, Vector>> &, const std::shared_ptr<std::pair<RID, Vector>> &)>>
-      pq(cmp);
+  std::priority_queue<PQData, std::vector<PQData>, function<bool(const PQData &, const PQData &)>> pq(cmp);
 
   // TODO(qiqi): 这里暂时写的抽象
   if (!is_second_) {
@@ -119,18 +117,24 @@ void IvfflatIndex::ann_search(const Vector &target, size_t limit, std::vector<RI
     for (int i = 0; i < std::min(probes_, (int)points_ptr_->size()); i++) {
       int point = points_ptr_->at(i).first;
       ASSERT(point < kmeans_ptr_->size(), "point should be less than kmeans_ptr_ size");
-      std::vector<std::shared_ptr<std::pair<RID, std::vector<double>>>> data;
+      std::vector<PQData> data;
       read_all_vector(kmeans_ptr_->at(point), data);
       for (auto &item : data) {
+        if (pq.size() > limit) {
+          pq.pop();
+        }
         pq.emplace(item);
       }
     }
 
     // 2. 在这些簇里选 limit 个距离最短的点
     // 3. 将结果返回
+    while (pq.size() > limit) {
+      pq.pop();
+    }
     while (limit-- && !pq.empty()) {
       auto &top = pq.top();
-      res.emplace_back(top->first);
+      res.emplace_back(top.first);
       pq.pop();
     }
   } else {
@@ -154,15 +158,18 @@ void IvfflatIndex::ann_search(const Vector &target, size_t limit, std::vector<RI
     start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < std::min(probes_, first_points_size_); i++) {
       // 1. 找 probes 个距离最短的质点
-      auto point = points_ptr_->at(i).first;
+      auto  point      = points_ptr_->at(i).first;
       auto &kmeans_ptr = child_kmeans_ptr_[point];
       auto &points_ptr = child_points_ptr_[point];
       for (int i = 0; i < std::min(probes_, (int)points_ptr->size()); i++) {
         int point = points_ptr->at(i).first;
         ASSERT(point < kmeans_ptr->size(), "point should be less than kmeans_ptr size");
-        std::vector<std::shared_ptr<std::pair<RID, Vector>>> data;
+        std::vector<PQData> data;
         read_all_vector(kmeans_ptr->at(point), data);
         for (auto &item : data) {
+          if (pq.size() > limit) {
+            pq.pop();
+          }
           pq.emplace(item);
         }
       }
@@ -173,12 +180,16 @@ void IvfflatIndex::ann_search(const Vector &target, size_t limit, std::vector<RI
 
     // 2. 在这些簇里选 limit 个距离最短的点
     // 3. 将结果返回
+    while (pq.size() > limit) {
+      pq.pop();
+    }
     while (limit-- && !pq.empty()) {
       auto &top = pq.top();
-      res.emplace_back(top->first);
+      res.emplace_back(top.first);
       pq.pop();
     }
   }
+  std::reverse(res.begin(), res.end());
 }
 
 void IvfflatIndex::cleaner()
@@ -299,11 +310,11 @@ void IvfflatIndex::read_all_rid(DataPtr &rids)
 
 void IvfflatIndex::read_all_vector(const std::vector<RID> &rids, DkmData &dkm_data)
 {
-  int    idx = 0;
+  int   idx             = 0;
   auto &field_meta      = field_metas_[0];
   dkm_data              = std::vector<Vector>(rids.size(), Vector(field_meta.dim(), 0));
-  auto  nullable        = field_meta.nullable();
-  int   off             = nullable + field_meta.offset();
+  auto   nullable       = field_meta.nullable();
+  int    off            = nullable + field_meta.offset();
   auto   record_handler = table_->record_handler();
   Record record;
   for (auto &rid : rids) {
@@ -336,26 +347,24 @@ void IvfflatIndex::read_all_vector(const std::vector<RID> &rids, DkmData &dkm_da
   }
 }
 
-void IvfflatIndex::read_all_vector(
-    const std::vector<RID> &rids, std::vector<std::shared_ptr<std::pair<RID, Vector>>> &data)
+void IvfflatIndex::read_all_vector(const std::vector<RID> &rids, std::vector<PQData> &data)
 {
-  auto &field_meta      = field_metas_[0];
-  auto  nullable        = field_meta.nullable();
-  int   off             = nullable + field_meta.offset();
-  data                  = std::vector<std::shared_ptr<std::pair<RID, Vector>>>(rids.size(), nullptr);
+  auto      &field_meta = field_metas_[0];
+  const auto dim        = field_meta.dim();
+  auto       nullable   = field_meta.nullable();
+  int        off        = nullable + field_meta.offset();
+  data.resize(rids.size());
   auto   record_handler = table_->record_handler();
   Record record;
   int    idx = 0;
-  for (auto &rid : rids) {
-    data[idx] = std::make_shared<std::pair<RID, Vector>>();
-    data[idx]->first = rid;
-    data[idx]->second.resize(field_meta.dim(), 0);
-
-    auto &vp = cache_[rid];
+  for (const auto &rid : rids) {
+    data[idx].first = rid;
+    auto &vp        = cache_[rid];
     if (vp) {
-      memcpy(data.at(idx++)->second.data(), vp->data(), vp->size() * sizeof(double));
+      data[idx++].second = vp;
       continue;
     }
+    data[idx].second = std::make_shared<Vector>(Vector(dim, 0));
 
     RC rc = record_handler->get_record(rid, record);
     if (rc != RC::SUCCESS) {
@@ -369,9 +378,9 @@ void IvfflatIndex::read_all_vector(
       if (OB_FAIL(rc)) {
         ASSERT(OB_FAIL(rc), "Failed to read all vector in ivfflat index");
       }
-      memcpy(data.at(idx++)->second.data(), s.data(), s.length());
+      memcpy(data.at(idx++).second->data(), s.data(), s.length());
     } else {
-      memcpy(data.at(idx++)->second.data(), record.data() + off, field_meta.len() - nullable);
+      memcpy(data.at(idx++).second->data(), record.data() + off, field_meta.len() - nullable);
     }
   }
 }

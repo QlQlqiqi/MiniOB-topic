@@ -89,6 +89,7 @@ RC VectorIndexScanPhysicalOperator::init()
     return rc;
   }
 
+  // ann_search 出来的 res 已经被排序
   // std::sort(tuples_.begin(), tuples_.end(), [&](const std::unique_ptr<Tuple> &a, const std::unique_ptr<Tuple> &b) {
   //   Value a_val, b_val;
   //   assert(expr_->type() == ExprType::FUNCTION);
