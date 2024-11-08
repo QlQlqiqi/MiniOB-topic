@@ -12,6 +12,8 @@ See the Mulan PSL v2 for more details. */
 
 #include "storage/index/bplus_tree.h"
 #include "storage/index/index.h"
+#include "storage/index/annoylib.h"
+#include "storage/index/kissrandom.h"
 
 class BplusTreeHandler;
 
@@ -66,9 +68,10 @@ private:
 
   using PQData = std::pair<RID, std::shared_ptr<Vector>>;
 
-  void read_all_rid(DataPtr &rids);
-  void read_all_vector(const std::vector<RID> &rids, DkmData &dkm_data);
-  void read_all_vector(const std::vector<RID> &rids, std::vector<PQData> &data);
+  void insert_index(const RID &rid, const double *data);
+
+  void init_index();
+  void deinit_index();
 
   BplusTreeHandler index_handler_;
   Table           *table_     = nullptr;
@@ -76,22 +79,18 @@ private:
   int              lists_     = 0;
   int              probes_    = 0;
   int              func_type_ = 0;
-  // 这里存储的数据是整个 record 全部
 
-  DataPtr data_ptr_;
-  // 第一个 vector 是簇的数量，长度是 lists_
-  KMeansPtr kmeans_ptr_;
-  // kmeans 的每个簇的在 kmeans_ptr_ 中的下标和质点坐标
-  PointsPtr points_ptr_;
-  // 是否有二次聚类
-  bool is_second_ = false;
-  int first_points_size_ = 0;
-  // 如果存在二次聚类，则存在这
-  std::vector<KMeansPtr> child_kmeans_ptr_;
-  std::vector<PointsPtr> child_points_ptr_;
-  // 是否需要重新执行 kmeans 算法
+  // 是否需要重新构建 index
   bool is_clean_ = true;
-  // 记录一个粗略的数据量
-  uint64_t cnt_ = 0;
-  std::map<RID, VectorPtr> cache_;
+  int dim_ = 0;
+
+  // 这里本应使用模板来处理，但是为了影响最小，定义多个
+  Annoy::AnnoyIndex<uint64_t, double, Annoy::Euclidean, Annoy::Kiss32Random, Annoy::AnnoyIndexSingleThreadedBuildPolicy>
+      *index_l2_disance_ = nullptr;
+  Annoy::AnnoyIndex<uint64_t, double, Annoy::Angular, Annoy::Kiss32Random, Annoy::AnnoyIndexSingleThreadedBuildPolicy>
+      *index_cosine_ = nullptr;
+  Annoy::AnnoyIndex<uint64_t, double, Annoy::DotProduct, Annoy::Kiss32Random, Annoy::AnnoyIndexSingleThreadedBuildPolicy>
+      *index_inner_product_ = nullptr;
+  std::map<int, uint64_t> mp_;
+  uint64_t lsn_ = 0;
 };
