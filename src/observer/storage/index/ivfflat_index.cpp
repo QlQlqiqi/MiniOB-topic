@@ -75,12 +75,7 @@ RC IvfflatIndex::open(
 void IvfflatIndex::ann_search(const Vector &target, size_t limit, std::vector<RID> &res)
 {
   if (!is_clean_) {
-    auto start = std::chrono::high_resolution_clock::now();
     cleaner();
-    printf("=============================================\n");
-    auto finish = std::chrono::high_resolution_clock::now();
-    std::cout << "cleaner cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count()
-              << "ms.\n";
     is_clean_ = true;
   }
 
