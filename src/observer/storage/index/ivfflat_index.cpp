@@ -294,9 +294,9 @@ RC IvfflatIndex::build_index()
   }
   bool ret;
   switch (static_cast<FunctionExpr::Type>(func_type_)) {
-    case FunctionExpr::Type::L2_DISTANCE: ret = index_l2_disance_->build(dim_); break;
-    case FunctionExpr::Type::COSINE_DISTANCE: ret = index_cosine_->build(dim_); break;
-    case FunctionExpr::Type::INNER_PRODUCT: ret = index_inner_product_->build(dim_); break;
+    case FunctionExpr::Type::L2_DISTANCE: ret = index_l2_disance_->build(lists_); break;
+    case FunctionExpr::Type::COSINE_DISTANCE: ret = index_cosine_->build(lists_); break;
+    case FunctionExpr::Type::INNER_PRODUCT: ret = index_inner_product_->build(lists_); break;
   }
   return ret ? RC::SUCCESS : RC::INTERNAL;
 }
