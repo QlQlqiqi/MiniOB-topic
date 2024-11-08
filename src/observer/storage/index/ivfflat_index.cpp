@@ -29,12 +29,12 @@ RC IvfflatIndex::create(Table *table, const char *file_name, const IndexMeta &in
     return rc;
   }
 
-  inited_     = true;
-  table_      = table;
-  lists_      = index_meta.with()->lists;
-  probes_     = index_meta.with()->probes;
-  func_type_  = index_meta.with()->func_type;
-  dim_ = field_metas[0]->dim();
+  inited_    = true;
+  table_     = table;
+  lists_     = index_meta.with()->lists;
+  probes_    = index_meta.with()->probes;
+  func_type_ = index_meta.with()->func_type;
+  dim_       = field_metas[0]->dim();
   init_index();
   LOG_INFO("Successfully create index, file_name:%s, index_meta: %s",
     file_name, index_meta.to_string().c_str());
@@ -60,12 +60,12 @@ RC IvfflatIndex::open(
     return rc;
   }
 
-  inited_     = true;
-  table_      = table;
-  lists_      = index_meta.with()->lists;
-  probes_     = index_meta.with()->probes;
-  func_type_  = index_meta.with()->func_type;
-  dim_ = field_metas[0]->dim();
+  inited_    = true;
+  table_     = table;
+  lists_     = index_meta.with()->lists;
+  probes_    = index_meta.with()->probes;
+  func_type_ = index_meta.with()->func_type;
+  dim_       = field_metas[0]->dim();
   init_index();
   LOG_INFO("Successfully open index, file_name:%s, index_meta: %s",
     file_name, index_meta.to_string().c_str());
@@ -130,16 +130,24 @@ void IvfflatIndex::cleaner()
     if (field_meta.high_vector()) {
       rc = table_->get_text_from_record(record.data() + off, s, field_meta.high_vector());
       if (OB_FAIL(rc)) {
-        LOG_ERROR("Failed to insert entry in ivfflat index");
+        LOG_ERROR("Failed to get_text_from_record in ivfflat index");
         return;
       }
-      insert_index(rid, reinterpret_cast<const double *>(s.data()));
+      rc = insert_index(rid, reinterpret_cast<const double *>(s.data()));
     } else {
-      insert_index(rid, reinterpret_cast<const double *>(record.data() + off));
+      rc = insert_index(rid, reinterpret_cast<const double *>(record.data() + off));
+    }
+    if (OB_FAIL(rc)) {
+      LOG_ERROR("Failed to insert index in ivfflat index");
+      return;
     }
   }
   record_handler->close();
   index_scanner->destroy();
+
+  if (build_index() != RC::SUCCESS) {
+    LOG_ERROR("Failed to build index in ivfflat index");
+  }
 }
 
 RC IvfflatIndex::close()
@@ -156,10 +164,10 @@ RC IvfflatIndex::close()
 
 RC IvfflatIndex::insert_entry(const char *record, const RID *rid)
 {
-  RC rc;
-  auto &field_meta     = field_metas_[0];
-  auto  nullable       = field_meta.nullable();
-  int   off            = nullable + field_meta.offset();
+  RC    rc;
+  auto &field_meta = field_metas_[0];
+  auto  nullable   = field_meta.nullable();
+  int   off        = nullable + field_meta.offset();
 
   // 忽略 isnull
   Value s;
@@ -169,9 +177,14 @@ RC IvfflatIndex::insert_entry(const char *record, const RID *rid)
       LOG_ERROR("Failed to insert entry in ivfflat index");
       return rc;
     }
-    insert_index(*rid, reinterpret_cast<const double *>(s.data()));
+    rc = insert_index(*rid, reinterpret_cast<const double *>(s.data()));
   } else {
-    insert_index(*rid, reinterpret_cast<const double *>(record + off));
+    rc = insert_index(*rid, reinterpret_cast<const double *>(record + off));
+  }
+
+  if (OB_FAIL(rc)) {
+    LOG_ERROR("Failed to insert index in ivfflat index");
+    return rc;
   }
 
   rc = index_handler_.insert_entry(record, rid);
@@ -206,21 +219,17 @@ IndexScanner *IvfflatIndex::create_scanner(const char *left_key, int left_len, b
   return index_scanner;
 }
 
-void IvfflatIndex::insert_index(const RID &rid, const double *data)
+RC IvfflatIndex::insert_index(const RID &rid, const double *data)
 {
+  bool ret;
   mp_[lsn_] = (uint64_t)rid.page_num << 32 | rid.slot_num;
   switch (static_cast<FunctionExpr::Type>(func_type_)) {
-    case FunctionExpr::Type::L2_DISTANCE:
-      index_l2_disance_->add_item(lsn_, data);
-      break;
-    case FunctionExpr::Type::COSINE_DISTANCE:
-      index_cosine_->add_item(lsn_, data);
-      break;
-    case FunctionExpr::Type::INNER_PRODUCT:
-      index_inner_product_->add_item(lsn_, data);
-      break;
+    case FunctionExpr::Type::L2_DISTANCE: ret = index_l2_disance_->add_item(lsn_, data); break;
+    case FunctionExpr::Type::COSINE_DISTANCE: ret = index_cosine_->add_item(lsn_, data); break;
+    case FunctionExpr::Type::INNER_PRODUCT: ret = index_inner_product_->add_item(lsn_, data); break;
   }
   lsn_++;
+  return ret ? RC::SUCCESS : RC::INTERNAL;
 }
 
 void IvfflatIndex::init_index()
@@ -229,19 +238,26 @@ void IvfflatIndex::init_index()
   mp_.clear();
   switch (static_cast<FunctionExpr::Type>(func_type_)) {
     case FunctionExpr::Type::L2_DISTANCE:
-      index_l2_disance_ = new Annoy::
-          AnnoyIndex<uint64_t, double, Annoy::Euclidean, Annoy::Kiss32Random, Annoy::AnnoyIndexSingleThreadedBuildPolicy>(dim_);
-      index_l2_disance_->build(lists_ / 10);
+      index_l2_disance_ = new Annoy::AnnoyIndex<uint64_t,
+          double,
+          Annoy::Euclidean,
+          Annoy::Kiss32Random,
+          Annoy::AnnoyIndexSingleThreadedBuildPolicy>(dim_);
+      // index_l2_disance_->build(lists_);
       break;
     case FunctionExpr::Type::COSINE_DISTANCE:
       index_cosine_ = new Annoy::
-          AnnoyIndex<uint64_t, double, Annoy::Angular, Annoy::Kiss32Random, Annoy::AnnoyIndexSingleThreadedBuildPolicy>(dim_);
-      index_cosine_->build(lists_ / 10);
+          AnnoyIndex<uint64_t, double, Annoy::Angular, Annoy::Kiss32Random, Annoy::AnnoyIndexSingleThreadedBuildPolicy>(
+              dim_);
+      // index_cosine_->build(lists_);
       break;
     case FunctionExpr::Type::INNER_PRODUCT:
-      index_inner_product_ = new Annoy::
-          AnnoyIndex<uint64_t, double, Annoy::DotProduct, Annoy::Kiss32Random, Annoy::AnnoyIndexSingleThreadedBuildPolicy>(dim_);
-      index_inner_product_->build(lists_ / 10);
+      index_inner_product_ = new Annoy::AnnoyIndex<uint64_t,
+          double,
+          Annoy::DotProduct,
+          Annoy::Kiss32Random,
+          Annoy::AnnoyIndexSingleThreadedBuildPolicy>(dim_);
+      // index_inner_product_->build(lists_);
       break;
   }
 }
@@ -264,4 +280,15 @@ void IvfflatIndex::deinit_index()
       index_inner_product_ = nullptr;
       break;
   }
+}
+
+RC IvfflatIndex::build_index()
+{
+  bool ret;
+  switch (static_cast<FunctionExpr::Type>(func_type_)) {
+    case FunctionExpr::Type::L2_DISTANCE: ret = index_l2_disance_->build(lists_); break;
+    case FunctionExpr::Type::COSINE_DISTANCE: ret = index_cosine_->build(lists_); break;
+    case FunctionExpr::Type::INNER_PRODUCT: ret = index_inner_product_->build(lists_); break;
+  }
+  return ret ? RC::SUCCESS : RC::INTERNAL;
 }

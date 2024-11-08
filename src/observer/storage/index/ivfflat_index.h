@@ -68,10 +68,11 @@ private:
 
   using PQData = std::pair<RID, std::shared_ptr<Vector>>;
 
-  void insert_index(const RID &rid, const double *data);
+  RC insert_index(const RID &rid, const double *data);
 
   void init_index();
   void deinit_index();
+  RC build_index();
 
   BplusTreeHandler index_handler_;
   Table           *table_     = nullptr;
