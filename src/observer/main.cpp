@@ -33,6 +33,9 @@ using namespace common;
 
 #define NET "NET"
 
+#ifdef __clang__
+#pragma clang diagnostic ignored "-Wmissing-braces"
+#endif
 static Server *g_server = nullptr;
 
 void usage()
@@ -194,8 +197,8 @@ int main(int argc, char **argv)
     return rc;
   }
 
-  g_log->set_console_level(common::LOG_LEVEL_INFO);
-  g_log->set_log_level(common::LOG_LEVEL_DEBUG);
+  g_log->set_console_level(common::LOG_LEVEL_ERR);
+  g_log->set_log_level(common::LOG_LEVEL_ERR);
   g_server = init_server();
   g_server->serve();
 

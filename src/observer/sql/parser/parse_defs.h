@@ -315,6 +315,7 @@ struct SetVariableSqlNode
 {
   std::string name;
   Value       value;
+  std::string str_val;
 };
 
 

@@ -37,6 +37,8 @@ struct RID
   SlotNum slot_num;  // record's slot number
 
   RID() = default;
+  // 防止成为非平凡的
+  // RID(const RID &other) : page_num(other.page_num), slot_num(other.slot_num) {}
   RID(const PageNum _page_num, const SlotNum _slot_num) : page_num(_page_num), slot_num(_slot_num) {}
 
   const string to_string() const
@@ -44,6 +46,10 @@ struct RID
     stringstream ss;
     ss << "PageNum:" << page_num << ", SlotNum:" << slot_num;
     return ss.str();
+  }
+
+  bool operator<(const RID &other) const {
+    return page_num == other.page_num ? slot_num < other.slot_num : page_num < other.slot_num;
   }
 
   bool operator==(const RID &other) const { return page_num == other.page_num && slot_num == other.slot_num; }

@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "event/session_event.h"
 #include "event/sql_event.h"
 #include "session/session.h"
+#include <chrono>
 
 RC SqlTaskHandler::handle_event(Communicator *communicator)
 {

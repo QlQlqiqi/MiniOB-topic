@@ -898,25 +898,41 @@ RC FunctionExpr::get_value(const Tuple &tuple, Value &value) const
   return rc;
 }
 
-RC FunctionExpr::calc_l2_distance(const Value &left, const Value &right, Value &result) const
+RC FunctionExpr::calc_l2_distance(const Value &left, const Value &right, Value &result) 
 {
   auto   l   = reinterpret_cast<const double *>(left.data());
   auto   r   = reinterpret_cast<const double *>(right.data());
   int    len = left.length() / sizeof(double);
+  double ans;
+  calc_l2_distance(l, r, len, ans);
+  result = Value(static_cast<float>(ans));
+  return RC::SUCCESS;
+}
+
+RC FunctionExpr::calc_l2_distance(const double *l, const double *r, const int len, double &res) 
+{
   double ans = 0;
   for (int i = 0; i < len; i++) {
     ans += (l[i] - r[i]) * (l[i] - r[i]);
   }
   ans    = std::sqrt(ans);
-  result = Value(static_cast<float>(ans));
+  res = ans;
   return RC::SUCCESS;
 }
 
-RC FunctionExpr::calc_cosine_distance(const Value &left, const Value &right, Value &result) const
+RC FunctionExpr::calc_cosine_distance(const Value &left, const Value &right, Value &result) 
 {
   auto   l    = reinterpret_cast<const double *>(left.data());
   auto   r    = reinterpret_cast<const double *>(right.data());
   int    len  = left.length() / sizeof(double);
+  double ans;
+  calc_cosine_distance(l, r, len, ans);
+  result = Value(static_cast<float>(ans));
+  return RC::SUCCESS;
+}
+
+RC FunctionExpr::calc_cosine_distance(const double *l, const double *r, const int len, double &res) 
+{
   double ans1 = 0;
   double ans2 = 0;
   double ans3 = 0;
@@ -930,20 +946,28 @@ RC FunctionExpr::calc_cosine_distance(const Value &left, const Value &right, Val
   } else {
     ans1 = 1 - ans1 / std::sqrt(ans2) / std::sqrt(ans3);
   }
-  result = Value(static_cast<float>(ans1));
+  res = ans1;
   return RC::SUCCESS;
 }
 
-RC FunctionExpr::calc_inner_product(const Value &left, const Value &right, Value &result) const
+RC FunctionExpr::calc_inner_product(const Value &left, const Value &right, Value &result) 
 {
   auto   l   = reinterpret_cast<const double *>(left.data());
   auto   r   = reinterpret_cast<const double *>(right.data());
   int    len = left.length() / sizeof(double);
+  double ans;
+  calc_inner_product(l, r, len, ans);
+  result = Value(static_cast<float>(ans));
+  return RC::SUCCESS;
+}
+
+RC FunctionExpr::calc_inner_product(const double *l, const double *r, const int len, double &res) 
+{
   double ans = 0;
   for (int i = 0; i < len; i++) {
     ans += l[i] * r[i];
   }
-  result = Value(static_cast<float>(ans));
+  res = ans;
   return RC::SUCCESS;
 }
 

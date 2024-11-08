@@ -656,10 +656,13 @@ public:
     return func(this);
   }
 
+  static RC calc_l2_distance(const Value &left, const Value &right, Value &result) ;
+  static RC calc_l2_distance(const double *l, const double *r, const int len, double &res) ;
+  static RC calc_cosine_distance(const Value &left, const Value &right, Value &result) ;
+  static RC calc_cosine_distance(const double *l, const double *r, const int len, double &res) ;
+  static RC calc_inner_product(const Value &left, const Value &right, Value &result) ;
+  static RC calc_inner_product(const double *l, const double *r, const int len, double &res) ;
 private:
-  RC calc_l2_distance(const Value &left, const Value &right, Value &result) const;
-  RC calc_cosine_distance(const Value &left, const Value &right, Value &result) const;
-  RC calc_inner_product(const Value &left, const Value &right, Value &result) const;
 
 public:
   static RC type_from_string(const char *type_str, Type &type);

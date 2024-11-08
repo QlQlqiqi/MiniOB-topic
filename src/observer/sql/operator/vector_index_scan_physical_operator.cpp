@@ -89,48 +89,64 @@ RC VectorIndexScanPhysicalOperator::init()
     return rc;
   }
 
-  std::sort(tuples_.begin(), tuples_.end(), [&](const std::unique_ptr<Tuple> &a, const std::unique_ptr<Tuple> &b) {
-    Value a_val, b_val;
-    assert(expr_->type() == ExprType::FUNCTION);
-    Expression *expression = expr_.get();
-    expression->get_value(*a, a_val);
-    expression->get_value(*b, b_val);
-    auto cmp = a_val.compare_without_cast(b_val);
-    if (cmp == ValCmpRes::EQUAL)
-      return false;
-    if (cmp == ValCmpRes::LESS) {
-      return order_op_ == OrderOp::ASC;
-    }
-    if (cmp == ValCmpRes::GREAT) {
-      return order_op_ == OrderOp::DESC;
-    }
-    if (cmp == ValCmpRes::NULL_VAL) {
-      // if a_val.is_null() and b_val.is_null() should continue
-      if (a_val.is_null() && b_val.is_null()) {
-        return false;
-      }
-      return order_op_ == OrderOp::ASC ? a_val.is_null() : b_val.is_null();
-    }
-    return false;
-  });
+  // ann_search 出来的 res 已经被排序
+  // std::sort(tuples_.begin(), tuples_.end(), [&](const std::unique_ptr<Tuple> &a, const std::unique_ptr<Tuple> &b) {
+  //   Value a_val, b_val;
+  //   assert(expr_->type() == ExprType::FUNCTION);
+  //   Expression *expression = expr_.get();
+  //   expression->get_value(*a, a_val);
+  //   expression->get_value(*b, b_val);
+  //   auto cmp = a_val.compare_without_cast(b_val);
+  //   if (cmp == ValCmpRes::EQUAL)
+  //     return false;
+  //   if (cmp == ValCmpRes::LESS) {
+  //     return order_op_ == OrderOp::ASC;
+  //   }
+  //   if (cmp == ValCmpRes::GREAT) {
+  //     return order_op_ == OrderOp::DESC;
+  //   }
+  //   if (cmp == ValCmpRes::NULL_VAL) {
+  //     // if a_val.is_null() and b_val.is_null() should continue
+  //     if (a_val.is_null() && b_val.is_null()) {
+  //       return false;
+  //     }
+  //     return order_op_ == OrderOp::ASC ? a_val.is_null() : b_val.is_null();
+  //   }
+  //   return false;
+  // });
   return RC::SUCCESS;
 }
 
 RC VectorIndexScanPhysicalOperator::read_all()
 {
-  RC  rc;
-  RID rid;
+  auto order_by_expr = static_cast<FunctionExpr *>(expr_.get());
+  // order by 的左右 expr 一个是 field，一个是 vector
+  auto &left  = order_by_expr->left();
+  auto &right = order_by_expr->right();
 
-  while (RC::SUCCESS == (rc = index_scanner_->next_entry(&rid))) {
+  Value tmp;
+  if (left->type() == ExprType::VALUE) {
+    left->get_value(tuple_, tmp);
+  } else {
+    right->get_value(tuple_, tmp);
+  }
+
+  Value value;
+  tmp.cast_to(tmp, AttrType::VECTORS, value);
+  std::vector<double> target;
+  target.resize(field_meta_->dim());
+  memcpy(target.data(), value.data(), value.length());
+
+  std::vector<RID> res;
+  index_->ann_search(target, limit_num_, res);
+  for (auto &rid : res) {
     Record tmp_record;
-    rc = record_handler_->get_record(rid, tmp_record);
+    RC     rc = record_handler_->get_record(rid, tmp_record);
     if (OB_FAIL(rc)) {
       LOG_TRACE("failed to get record. rid=%s, rc=%s", rid.to_string().c_str(), strrc(rc));
       return rc;
     }
-
     LOG_TRACE("got a record. rid=%s", rid.to_string().c_str());
-
     tuple_.set_record(&tmp_record);
 
     rc = trx_->visit_record(table_, tmp_record, mode_);
@@ -141,8 +157,5 @@ RC VectorIndexScanPhysicalOperator::read_all()
     tuples_.emplace_back(tuple_.clone());
   }
 
-  if (rc != RC::RECORD_EOF) {
-    return rc;
-  }
   return RC::SUCCESS;
 }
