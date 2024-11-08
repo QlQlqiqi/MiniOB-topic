@@ -239,6 +239,7 @@ void IvfflatIndex::init_index()
 {
   lsn_ = 0;
   mp_.clear();
+  is_built_ = false;
   switch (static_cast<FunctionExpr::Type>(func_type_)) {
     case FunctionExpr::Type::L2_DISTANCE:
       index_l2_disance_ = new Annoy::AnnoyIndex<uint64_t,
@@ -269,6 +270,7 @@ void IvfflatIndex::deinit_index()
 {
   lsn_ = 0;
   mp_.clear();
+  is_built_ = false;
   switch (static_cast<FunctionExpr::Type>(func_type_)) {
     case FunctionExpr::Type::L2_DISTANCE:
       delete index_l2_disance_;
