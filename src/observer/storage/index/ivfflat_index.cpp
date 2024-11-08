@@ -79,8 +79,11 @@ void IvfflatIndex::ann_search(const Vector &target, size_t limit, std::vector<RI
     is_clean_ = true;
   }
 
-  if (build_index() != RC::SUCCESS) {
-    LOG_ERROR("Failed to build index in ivfflat index");
+  if (!is_built_) {
+    if (build_index() != RC::SUCCESS) {
+      LOG_ERROR("Failed to build index in ivfflat index");
+    }
+    is_built_ = true;
   }
 
   std::vector<uint64_t> tmp;
@@ -284,6 +287,9 @@ void IvfflatIndex::deinit_index()
 
 RC IvfflatIndex::build_index()
 {
+  if (is_built_) {
+    return RC::SUCCESS;
+  }
   bool ret;
   switch (static_cast<FunctionExpr::Type>(func_type_)) {
     case FunctionExpr::Type::L2_DISTANCE: ret = index_l2_disance_->build(dim_); break;

@@ -83,6 +83,7 @@ private:
 
   // 是否需要重新构建 index
   bool is_clean_ = true;
+  bool is_built_ = false;
   int dim_ = 0;
 
   // 这里本应使用模板来处理，但是为了影响最小，定义多个
