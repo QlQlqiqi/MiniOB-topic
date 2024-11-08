@@ -86,10 +86,10 @@ void IvfflatIndex::ann_search(const Vector &target, size_t limit, std::vector<RI
       break;
     case FunctionExpr::Type::COSINE_DISTANCE:
       index_cosine_->get_nns_by_vector(target.data(), limit, -1, &tmp, nullptr);
-
       break;
+    case FunctionExpr::Type::INNER_PRODUCT:
       index_inner_product_->get_nns_by_vector(target.data(), limit, -1, &tmp, nullptr);
-    case FunctionExpr::Type::INNER_PRODUCT: break;
+      break;
   }
 
   res.resize(tmp.size());
@@ -251,8 +251,17 @@ void IvfflatIndex::deinit_index()
   lsn_ = 0;
   mp_.clear();
   switch (static_cast<FunctionExpr::Type>(func_type_)) {
-    case FunctionExpr::Type::L2_DISTANCE: delete index_l2_disance_; break;
-    case FunctionExpr::Type::COSINE_DISTANCE: delete index_cosine_; break;
-    case FunctionExpr::Type::INNER_PRODUCT: delete index_inner_product_; break;
+    case FunctionExpr::Type::L2_DISTANCE:
+      delete index_l2_disance_;
+      index_l2_disance_ = nullptr;
+      break;
+    case FunctionExpr::Type::COSINE_DISTANCE:
+      delete index_cosine_;
+      index_cosine_ = nullptr;
+      break;
+    case FunctionExpr::Type::INNER_PRODUCT:
+      delete index_inner_product_;
+      index_inner_product_ = nullptr;
+      break;
   }
 }
